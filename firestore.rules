@@ -1,0 +1,34 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default to denying all access. This is a good security practice.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Rules for screen time data.
+    match /usage_data/{userID} {
+      // Anyone can read the screen time data (for the public website).
+      allow read: if true;
+
+      // Only an authenticated user can create or update their own screen time data.
+      // This requires the Android app to use Firebase Phone Authentication.
+      // The {phoneNumber} wildcard must match the authenticated user's phone number.
+      // Note: The phoneNumber in the path must be in E.164 format (e.g., +15551234567)
+      // to match request.auth.token.phone_number.
+      allow write: if request.auth != null && request.auth.uid == userID;
+    }
+    
+    match /usage_data/{phoneNumber} {
+    	allow read: if true;
+    }
+    
+    // Allow public, read-only access to taglines for the homepage.
+    // Writes to this collection should be done via the Firebase Console or an Admin SDK.
+    match /subtitles/{tag_line} {
+      allow read: if true;
+    }
+  }
+}
