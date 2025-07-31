@@ -40,24 +40,95 @@ class UsageStatsRepository(private val context: Context) {
     private val packageManager: PackageManager = context.packageManager
 
     /**
-     * Retrieves daily usage statistics for today using more accurate calculations.
+     * Retrieves usage statistics for the last 24 hours from now.
+     */
+    fun getLast24HoursUsageStats(): DailyUsage? {
+        if (!hasUsageAccessPermission()) {
+            return null
+        }
+
+        // Set to 24 hours ago
+        val endTime = System.currentTimeMillis()
+        val startTime = endTime - 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+
+        // Get usage stats and events
+        val usageStats = usageStatsManager.queryUsageStats(
+            UsageStatsManager.INTERVAL_DAILY,
+            startTime,
+            endTime
+        )
+
+        val (launchCounts, accurateUsageTimes) = getAccurateUsageData(startTime, endTime)
+
+        val filteredUsageStats = usageStats?.filterNotNull()?.filter {
+            it.totalTimeInForeground > 0
+        } ?: emptyList()
+
+        // Use the more accurate usage times if available, otherwise fall back to UsageStats
+        val totalScreenTime = if (accurateUsageTimes.isNotEmpty()) {
+            accurateUsageTimes.values.sum()
+        } else {
+            filteredUsageStats.sumOf { it.totalTimeInForeground }
+        }
+
+        // Use a map to track unique packages and their usage
+        val uniqueApps = mutableMapOf<String, AppUsage>()
+        
+        filteredUsageStats.forEach { stats ->
+            val packageName = stats.packageName
+            val usageTime = accurateUsageTimes[packageName] ?: stats.totalTimeInForeground
+            
+            // Only include apps that were actually used in the last 24 hours
+            if (usageTime > 0 && stats.lastTimeUsed >= startTime) {
+                val appName = getAppName(packageName)
+                val category = getAppCategory(packageName)
+                
+                uniqueApps[packageName] = AppUsage(
+                    packageName = packageName,
+                    usageTimeMillis = usageTime,
+                    lastTimeUsed = stats.lastTimeUsed,
+                    launchCount = launchCounts[packageName] ?: 0,
+                    appName = appName,
+                    category = category
+                )
+            }
+        }
+
+        val topApps = uniqueApps.values
+            .sortedByDescending { it.usageTimeMillis }
+            .take(100)
+
+        val socialMediaTime = uniqueApps.values
+            .filter { it.packageName in AppCategoryPackages.SOCIAL_MEDIA }
+            .sumOf { it.usageTimeMillis }
+        val entertainmentTime = uniqueApps.values
+            .filter { it.packageName in AppCategoryPackages.ENTERTAINMENT }
+            .sumOf { it.usageTimeMillis }
+
+        return DailyUsage(
+            date = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_DATE),
+            totalScreenTimeMillis = totalScreenTime,
+            topApps = topApps,
+            socialMediaTimeMillis = socialMediaTime,
+            entertainmentTimeMillis = entertainmentTime
+        )
+    }
+
+    /**
+     * Retrieves usage statistics for the current calendar day (midnight to now).
      */
     fun getTodayUsageStats(): DailyUsage? {
         if (!hasUsageAccessPermission()) {
             return null
         }
 
-        // Use Calendar to get exact start/end of day to match system behavior
-        val calendar = Calendar.getInstance()
-
         // Set to start of today (00:00:00)
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
+        val calendar = java.util.Calendar.getInstance()
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
         val startTime = calendar.timeInMillis
-
-        // Set to current time
         val endTime = System.currentTimeMillis()
 
         // Get usage stats and events
@@ -115,7 +186,7 @@ class UsageStatsRepository(private val context: Context) {
             .sumOf { it.usageTimeMillis }
 
         return DailyUsage(
-            date = LocalDate.now().format(DateTimeFormatter.ISO_DATE),
+            date = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ISO_DATE),
             totalScreenTimeMillis = totalScreenTime,
             topApps = topApps,
             socialMediaTimeMillis = socialMediaTime,

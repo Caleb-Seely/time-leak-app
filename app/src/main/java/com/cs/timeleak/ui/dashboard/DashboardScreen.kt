@@ -25,6 +25,9 @@ import com.cs.timeleak.data.UsageStatsRepository
 import com.cs.timeleak.data.FirestoreRepository
 import com.cs.timeleak.utils.UsageStatsPermissionChecker
 import com.cs.timeleak.utils.BatteryOptimizationHelper
+import com.cs.timeleak.utils.SyncScheduler
+import com.cs.timeleak.utils.WorkManagerDiagnostics
+import com.cs.timeleak.utils.DailyMidnightScheduler
 import com.cs.timeleak.ui.auth.AuthViewModel
 import androidx.work.WorkManager
 import androidx.work.WorkInfo
@@ -45,6 +48,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.cs.timeleak.integrity.IntegrityChecker
 
 @Composable
 fun DashboardScreen(
@@ -60,6 +64,8 @@ fun DashboardScreen(
     var showDebugInfo by remember { mutableStateOf(false) }
     var showGoalModal by remember { mutableStateOf(false) }
     var goalTimeMillis by remember { mutableStateOf(UserPrefs.getGoalTime(context)) }
+    var integrityTestRunning by remember { mutableStateOf(false) }
+    var integrityTestResult by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
@@ -241,7 +247,7 @@ fun DashboardScreen(
                                     isSyncing = true
                                     syncMessage = null
                                     try {
-                                        val stats = repository.getTodayUsageStats()
+                                        val stats = repository.getLast24HoursUsageStats()
                                         if (stats != null) {
                                             firestoreRepository.uploadUsageData(context, stats)
                                             syncMessage = "Successfully synced to database!"
@@ -654,7 +660,6 @@ private fun DebugInfoCard() {
             DebugRow("Phone Number", savedPhone ?: "Not saved")
             DebugRow("User UID", savedUid ?: "Not saved")
             DebugRow("Usage Permission", if (UsageStatsPermissionChecker.hasUsageAccessPermission(context)) "✓ Granted" else "✗ Denied")
-            DebugRow("Battery Optimization", if (BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) "✓ Ignored" else "✗ Not Ignored")
             workInfo?.let { info ->
                 val workType = when (workName) {
                     "immediate_usage_sync" -> "Immediate"
@@ -670,33 +675,26 @@ private fun DebugInfoCard() {
                 DebugRow("Work Status", "Not scheduled")
                 DebugRow("Next Daily Sync", "Will be scheduled after first sync")
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 Button(
                     onClick = { 
-                        if (!UsageStatsPermissionChecker.hasUsageAccessPermission(context)) {
-                            context.startActivity(UsageStatsPermissionChecker.getUsageAccessSettingsIntent())
-                        }
-                    },
-                    enabled = !UsageStatsPermissionChecker.hasUsageAccessPermission(context)
+                        DailyMidnightScheduler.reset(context)
+                    }
                 ) {
-                    Text("Fix Usage Permission")
+                    Text("Reset Midnight", style = MaterialTheme.typography.bodySmall)
                 }
                 Button(
                     onClick = { 
-                        if (!BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)) {
-                            BatteryOptimizationHelper.requestIgnoreBatteryOptimizations(context)
-                        }
-                    },
-                    enabled = !BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
+                        DailyMidnightScheduler.checkStatus(context)
+                    }
                 ) {
-                    Text("Fix Battery Opt")
+                    Text("Check Midnight", style = MaterialTheme.typography.bodySmall)
                 }
             }
-
         }
     }
 }

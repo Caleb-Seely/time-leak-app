@@ -28,134 +28,109 @@ class UsageSyncWorker(
     private val TAG = "UsageSyncWorker"
 
     override suspend fun doWork(): Result {
-        Log.d(TAG, "[doWork] UsageSyncWorker started")
+        val startTime = System.currentTimeMillis()
+        Log.d(TAG, "[doWork] UsageSyncWorker started at ${java.util.Date(startTime)}")
         
         fun saveLastRunTime(context: Context, time: Long) {
-            val prefs = context.getSharedPreferences("usage_sync_prefs", Context.MODE_PRIVATE)
-            prefs.edit().putLong("last_run_time", time).apply()
+            try {
+                val prefs = context.getSharedPreferences("usage_sync_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putLong("last_run_time", time).apply()
+                Log.d(TAG, "[doWork] Last run time saved: ${java.util.Date(time)}")
+            } catch (e: Exception) {
+                Log.e(TAG, "[doWork] Failed to save last run time: ${e.message}", e)
+            }
         }
         
-        fun scheduleNextDailySync() {
-            try {
-                // Check if this is an immediate sync (first time user)
-                val isImmediateSync = inputData.getBoolean("is_immediate_sync", false)
-                
-                if (isImmediateSync) {
-                    // For immediate sync: schedule next sync for 11:59 PM today
-                    scheduleDailySyncFor1159PM()
-                    Log.d(TAG, "[scheduleNextDailySync] Immediate sync completed, scheduled daily sync for 11:59 PM")
-                } else {
-                    // For daily sync: schedule next sync for 11:59 PM tomorrow
-                    scheduleDailySyncFor1159PMTomorrow()
-                    Log.d(TAG, "[scheduleNextDailySync] Daily sync completed, scheduled next daily sync for 11:59 PM tomorrow")
-                }
+        fun getLastRunTime(context: Context): Long {
+            return try {
+                val prefs = context.getSharedPreferences("usage_sync_prefs", Context.MODE_PRIVATE)
+                prefs.getLong("last_run_time", 0L)
             } catch (e: Exception) {
-                Log.e(TAG, "[scheduleNextDailySync] Failed to schedule next daily sync: ${e.message}", e)
+                Log.e(TAG, "[doWork] Failed to get last run time: ${e.message}", e)
+                0L
             }
         }
         
         return try {
+            val lastRun = getLastRunTime(context)
+            val hoursSinceLastRun = if (lastRun > 0) (startTime - lastRun) / (1000 * 60 * 60) else -1
+            
+            Log.d(TAG, "[doWork] Last successful sync: ${if (lastRun > 0) java.util.Date(lastRun).toString() else "Never"} ($hoursSinceLastRun hours ago)")
+            
             Log.d(TAG, "[doWork] Checking usage access permission...")
             if (!usageStatsRepository.hasUsageAccessPermission()) {
-                Log.w(TAG, "[doWork] No usage access permission, skipping sync")
-                return Result.failure()
+                Log.w(TAG, "[doWork] No usage access permission, failing sync")
+                return Result.failure(Data.Builder().putString("error", "No usage access permission").build())
             }
             Log.d(TAG, "[doWork] Usage access permission granted")
+            
             Log.d(TAG, "[doWork] Checking authentication...")
             val currentUser = auth.currentUser
             if (currentUser == null) {
-                Log.w(TAG, "[doWork] No authenticated user. Skipping sync. Phone number required.")
-                return Result.success() // Don't retry, just skip
-            } else {
-                Log.d(TAG, "[doWork] Authenticated user: UID=${currentUser.uid}, Phone=${currentUser.phoneNumber}")
+                Log.w(TAG, "[doWork] No authenticated user. Failing sync - authentication required.")
+                return Result.failure(Data.Builder().putString("error", "No authenticated user").build())
             }
-            Log.d(TAG, "[doWork] Fetching today's usage stats...")
-            val dailyUsage = usageStatsRepository.getTodayUsageStats()
+            
+            val userId = currentUser.uid
+            val phoneNumber = currentUser.phoneNumber
+            Log.d(TAG, "[doWork] Authenticated user: $phoneNumber (UID: $userId)")
+            
+            Log.d(TAG, "[doWork] Fetching last 24 hours usage stats...")
+            val dailyUsage = usageStatsRepository.getLast24HoursUsageStats()
             if (dailyUsage != null) {
-                Log.d(TAG, "[doWork] Uploading usage data: ${dailyUsage.topApps.size} apps, ${dailyUsage.totalScreenTimeMillis}ms total")
-                firestoreRepository.uploadUsageData(context, dailyUsage)
-                Log.d(TAG, "[doWork] Usage sync completed successfully")
-                val now = System.currentTimeMillis()
-                saveLastRunTime(context, now)
-                val outputData = Data.Builder()
-                    .putLong("last_run_time", now)
-                    .build()
-                scheduleNextDailySync()
-                Log.d(TAG, "[doWork] Scheduled next daily sync after successful upload")
-                Result.success(outputData)
+                Log.d(TAG, "[doWork] Found usage data: ${dailyUsage.topApps.size} apps, ${dailyUsage.totalScreenTimeMillis / (1000 * 60)} minutes total screen time")
+                
+                // Only upload if we have meaningful usage data (more than 1 minute)
+                if (dailyUsage.totalScreenTimeMillis > 60000) {
+                    Log.d(TAG, "[doWork] Uploading usage data to Firestore...")
+                    firestoreRepository.uploadUsageData(context, dailyUsage)
+                    Log.d(TAG, "[doWork] Usage sync completed successfully")
+                    
+                    val now = System.currentTimeMillis()
+                    saveLastRunTime(context, now)
+                    
+                    val outputData = Data.Builder()
+                        .putLong("last_run_time", now)
+                        .putLong("total_screen_time", dailyUsage.totalScreenTimeMillis)
+                        .putInt("app_count", dailyUsage.topApps.size)
+                        .putString("sync_status", "success")
+                        .build()
+                    
+                    val syncDuration = System.currentTimeMillis() - startTime
+                    Log.d(TAG, "[doWork] Sync completed in ${syncDuration}ms")
+                    
+                    Result.success(outputData)
+                } else {
+                    Log.d(TAG, "[doWork] Usage data too minimal (${dailyUsage.totalScreenTimeMillis}ms), marking as successful but not uploading")
+                    val now = System.currentTimeMillis()
+                    saveLastRunTime(context, now)  // Still save run time to prevent constant retries
+                    
+                    val outputData = Data.Builder()
+                        .putLong("last_run_time", now)
+                        .putString("sync_status", "skipped_minimal_usage")
+                        .build()
+                    
+                    Result.success(outputData)
+                }
             } else {
-                Log.w(TAG, "[doWork] No usage data available for today")
-                val now = System.currentTimeMillis()
-                saveLastRunTime(context, now)
+                Log.w(TAG, "[doWork] No usage data available from repository")
+                // Don't mark as failed - this might be normal (e.g., device wasn't used)
                 val outputData = Data.Builder()
-                    .putLong("last_run_time", now)
+                    .putString("sync_status", "no_data_available")
                     .build()
-                scheduleNextDailySync()
-                Log.d(TAG, "[doWork] Scheduled next daily sync after no data")
                 Result.success(outputData)
             }
         } catch (e: Exception) {
-            Log.e(TAG, "[doWork] Usage sync failed: ${e.message}", e)
-            Result.retry()
+            Log.e(TAG, "[doWork] Failed to sync usage data: ${e.message}", e)
+            
+            val outputData = Data.Builder()
+                .putString("error", e.message ?: "Unknown error")
+                .putString("sync_status", "failed")
+                .build()
+            
+            // Return failure so WorkManager can retry with backoff
+            Result.failure(outputData)
         }
     }
     
-    private fun scheduleDailySyncFor1159PM() {
-        val calendar = Calendar.getInstance()
-        val targetHour = 23 // 11 PM
-        val targetMinute = 59 // 59 minutes
-        
-        // Set target time to 11:59 PM today
-        calendar.set(Calendar.HOUR_OF_DAY, targetHour)
-        calendar.set(Calendar.MINUTE, targetMinute)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        
-        // If it's already past 11:59 PM today, schedule for tomorrow
-        if (calendar.timeInMillis <= System.currentTimeMillis()) {
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
-        }
-        
-        scheduleSyncForTime(calendar.timeInMillis, "daily_usage_sync")
-    }
-    
-    private fun scheduleDailySyncFor1159PMTomorrow() {
-        val calendar = Calendar.getInstance()
-        val targetHour = 23 // 11 PM
-        val targetMinute = 59 // 59 minutes
-        
-        // Set target time to 11:59 PM tomorrow
-        calendar.add(Calendar.DAY_OF_YEAR, 1) // Add 1 day
-        calendar.set(Calendar.HOUR_OF_DAY, targetHour)
-        calendar.set(Calendar.MINUTE, targetMinute)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        
-        scheduleSyncForTime(calendar.timeInMillis, "daily_usage_sync")
-    }
-    
-    private fun scheduleSyncForTime(targetTime: Long, workName: String) {
-        val delayMillis = targetTime - System.currentTimeMillis()
-        val delayHours = TimeUnit.MILLISECONDS.toHours(delayMillis)
-        val delayMinutes = TimeUnit.MILLISECONDS.toMinutes(delayMillis) % 60
-        
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .setRequiresBatteryNotLow(false)
-            .build()
-        val syncWorkRequest = OneTimeWorkRequestBuilder<UsageSyncWorker>()
-            .setConstraints(constraints)
-            .setInitialDelay(delayMillis, TimeUnit.MILLISECONDS)
-            .setBackoffCriteria(
-                androidx.work.BackoffPolicy.EXPONENTIAL,
-                15, TimeUnit.MINUTES
-            )
-            .build()
-        WorkManager.getInstance(context).enqueueUniqueWork(
-            workName,
-            androidx.work.ExistingWorkPolicy.REPLACE,
-            syncWorkRequest
-        )
-        Log.d(TAG, "[scheduleSyncForTime] Next sync scheduled for ${java.util.Date(targetTime)} (in ${delayHours}h ${delayMinutes}m)")
-    }
-} 
+}

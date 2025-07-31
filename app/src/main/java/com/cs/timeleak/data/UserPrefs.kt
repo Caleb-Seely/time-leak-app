@@ -10,6 +10,7 @@ object UserPrefs {
 
     fun saveUser(context: Context, phone: String?, uid: String?) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        android.util.Log.d("UserPrefs", "Saving user: phone=$phone, uid=$uid")
         prefs.edit()
             .putString(KEY_PHONE, phone)
             .putString(KEY_UID, uid)

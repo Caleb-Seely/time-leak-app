@@ -37,6 +37,7 @@ fun AuthScreen(
     viewModel: AuthViewModel = viewModel()
 ) {
     val context = LocalContext.current
+    val activity = context as android.app.Activity
     val authState by viewModel.authState.collectAsState()
 
     LaunchedEffect(authState.isAuthenticated) {
@@ -98,7 +99,7 @@ fun AuthScreen(
                         onCountryCodeChange = { viewModel.updateCountryCode(it) },
                         phoneNumber = authState.phoneNumber,
                         onPhoneNumberChange = { viewModel.updatePhoneNumber(it) },
-                        onSendCode = { viewModel.sendVerificationCode(context) },
+                        onSendCode = { viewModel.sendVerificationCode(activity) },
                         isError = authState.error != null,
                         errorMessage = authState.error
                     )
@@ -109,8 +110,8 @@ fun AuthScreen(
                     OtpVerification(
                         otp = authState.otp,
                         onOtpChange = { viewModel.updateOtp(it) },
-                        onVerifyCode = { viewModel.verifyCode(context) },
-                        onResendCode = { viewModel.sendVerificationCode(context) },
+                        onVerifyCode = { viewModel.verifyCode(activity) },
+                        onResendCode = { viewModel.sendVerificationCode(activity) },
                         isError = authState.error != null,
                         errorMessage = authState.error
                     )

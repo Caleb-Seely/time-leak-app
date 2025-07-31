@@ -16,49 +16,40 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import android.util.Log
 
 @Composable
 fun OnboardingScreen(
     onPermissionGranted: () -> Unit
 ) {
     val context = LocalContext.current
-    var currentStep by remember { mutableStateOf(OnboardingStep.USAGE_PERMISSION) }
-    var hasUsagePermission by remember { mutableStateOf(false) }
-    var hasBatteryOptimization by remember { mutableStateOf(false) }
+    val TAG = "OnboardingScreen"
+    var hasUsagePermission by remember { mutableStateOf(UsageStatsPermissionChecker.hasUsageAccessPermission(context)) }
     val lifecycleOwner = LocalLifecycleOwner.current
+    
+    Log.d(TAG, "OnboardingScreen composed - initial hasUsagePermission: $hasUsagePermission")
 
-    // Check permissions when the screen is first composed
-    LaunchedEffect(Unit) {
-        hasUsagePermission = UsageStatsPermissionChecker.hasUsageAccessPermission(context)
-        hasBatteryOptimization = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
-        
-        if (hasUsagePermission && hasBatteryOptimization) {
-            onPermissionGranted()
-        } else if (hasUsagePermission && currentStep == OnboardingStep.USAGE_PERMISSION) {
-            currentStep = OnboardingStep.BATTERY_OPTIMIZATION
-        }
-    }
-
-    // Re-check permissions when returning to the foreground
+    // Re-check permission when returning to the foreground
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                val newUsagePermission = UsageStatsPermissionChecker.hasUsageAccessPermission(context)
-                val newBatteryOptimization = BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
-                
-                hasUsagePermission = newUsagePermission
-                hasBatteryOptimization = newBatteryOptimization
-                
-                if (newUsagePermission && newBatteryOptimization) {
-                    onPermissionGranted()
-                } else if (newUsagePermission && currentStep == OnboardingStep.USAGE_PERMISSION) {
-                    currentStep = OnboardingStep.BATTERY_OPTIMIZATION
-                }
+                val newPermissionState = UsageStatsPermissionChecker.hasUsageAccessPermission(context)
+                Log.d(TAG, "ON_RESUME in OnboardingScreen - old permission: $hasUsagePermission, new permission: $newPermissionState")
+                hasUsagePermission = newPermissionState
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // Only call onPermissionGranted when permission transitions to true
+    LaunchedEffect(hasUsagePermission) {
+        Log.d(TAG, "LaunchedEffect triggered - hasUsagePermission: $hasUsagePermission")
+        if (hasUsagePermission) {
+            Log.d(TAG, "Calling onPermissionGranted()")
+            onPermissionGranted()
         }
     }
 
@@ -71,35 +62,17 @@ fun OnboardingScreen(
     ) {
         // Progress indicator
         LinearProgressIndicator(
-            progress = {
-                when (currentStep) {
-                    OnboardingStep.USAGE_PERMISSION -> 0.5f
-                    OnboardingStep.BATTERY_OPTIMIZATION -> 1.0f
-                }
-            },
+            progress = { 1.0f },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 32.dp),
         )
 
-        when (currentStep) {
-            OnboardingStep.USAGE_PERMISSION -> {
-                UsagePermissionStep(
-                    onPermissionGranted = {
-                        hasUsagePermission = true
-                        currentStep = OnboardingStep.BATTERY_OPTIMIZATION
-                    }
-                )
+        UsagePermissionStep(
+            onPermissionGranted = {
+                hasUsagePermission = true
             }
-            OnboardingStep.BATTERY_OPTIMIZATION -> {
-                BatteryOptimizationStep(
-                    onOptimizationGranted = {
-                        hasBatteryOptimization = true
-                        onPermissionGranted()
-                    }
-                )
-            }
-        }
+        )
     }
 }
 
@@ -147,68 +120,4 @@ private fun UsagePermissionStep(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
-}
-
-@Composable
-private fun BatteryOptimizationStep(
-    onOptimizationGranted: () -> Unit
-) {
-    val context = LocalContext.current
-    
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = "Battery Optimization",
-            style = MaterialTheme.typography.headlineMedium,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
-
-        Text(
-            text = "To ensure accurate tracking and reliable data sync, please disable battery optimization for this app. This is how your time is uploaded behind the scenes.",
-            style = MaterialTheme.typography.bodyLarge,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 32.dp)
-        )
-
-        Button(
-            onClick = {
-                BatteryOptimizationHelper.requestIgnoreBatteryOptimizations(context)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-        ) {
-            Text("Disable Battery Optimization")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        OutlinedButton(
-            onClick = {
-                BatteryOptimizationHelper.openBatteryOptimizationSettings(context)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-        ) {
-            Text("Open Battery Settings")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        Text(
-            text = "After disabling battery optimization, please return to this app",
-            style = MaterialTheme.typography.bodyMedium,
-            textAlign = TextAlign.Center,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
-
-private enum class OnboardingStep {
-    USAGE_PERMISSION,
-    BATTERY_OPTIMIZATION
 } 
