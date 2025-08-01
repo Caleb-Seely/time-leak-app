@@ -39,8 +39,19 @@ object UserPrefs {
     fun getGoalTime(context: Context): Long {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val savedGoal = prefs.getLong(KEY_GOAL_TIME, 0L)
-        // Return default goal of 4 hours 30 minutes (16,200,000 milliseconds) if no goal is set
-        return if (savedGoal == 0L) 16_200_000L else savedGoal
+        
+        // If no goal is set, calculate default as 90% of baseline screen time
+        return if (savedGoal == 0L) {
+            val baseline = getBaselineScreenTime(context)
+            if (baseline != null) {
+                (baseline * 0.9).toLong()
+            } else {
+                // Fallback to 4 hours 30 minutes if baseline not available
+                16_200_000L
+            }
+        } else {
+            savedGoal
+        }
     }
 
     fun saveBaselineScreenTime(context: Context, baselineMillis: Long) {
