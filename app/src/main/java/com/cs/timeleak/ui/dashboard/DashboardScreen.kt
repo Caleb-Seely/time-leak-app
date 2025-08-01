@@ -171,17 +171,17 @@ fun DashboardScreen(
                 }
                 
                 // Sign out button
-                IconButton(
-                    onClick = {
-                        onSignOut()
-                    }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ExitToApp,
-                        contentDescription = "Sign Out",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                }
+//                IconButton(
+//                    onClick = {
+//                        onSignOut()
+//                    }
+//                ) {
+//                    Icon(
+//                        imageVector = Icons.Default.ExitToApp,
+//                        contentDescription = "Sign Out",
+//                        tint = MaterialTheme.colorScheme.error
+//                    )
+//                }
             }
         }
 

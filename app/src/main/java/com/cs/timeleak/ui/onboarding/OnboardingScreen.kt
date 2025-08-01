@@ -94,11 +94,35 @@ private fun UsagePermissionStep(
         )
 
         Text(
-            text = "Enable Usage Access to track your app activity and accurate screen time stats.",
+            text = "Enable Usage Access to track your screen time and provide accurate usage statistics.",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(bottom = 32.dp)
+            modifier = Modifier.padding(bottom = 16.dp)
         )
+
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Text(
+                    text = "Privacy Information",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text(
+                    text = "• Only screen time numbers are collected\n• No specific app data or personal information is saved\n• Data is not stored permanently - each sync overwrites previous data\n",
+                    style = MaterialTheme.typography.bodyMedium,
+                    lineHeight = 20.sp
+                )
+            }
+        }
 
         Button(
             onClick = {
