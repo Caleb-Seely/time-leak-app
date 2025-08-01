@@ -24,6 +24,7 @@ import kotlinx.coroutines.sync.withLock
 import java.lang.ref.WeakReference
 import com.google.android.gms.tasks.Tasks
 import kotlinx.coroutines.isActive
+import com.cs.timeleak.data.UsageStatsRepository
 
 data class AuthState(
     val countryCode: String = "+1",
@@ -348,6 +349,12 @@ class AuthViewModel : ViewModel() {
                 val context = activity ?: appContext
                 context?.let {
                     UserPrefs.saveUser(it, user.phoneNumber, user.uid)
+                    
+                    // Capture baseline screen time if not already captured
+                    if (!UserPrefs.isBaselineCaptured(it)) {
+                        captureBaseline(it)
+                    }
+                    
                     com.cs.timeleak.utils.SyncScheduler.scheduleImmediateSync(it)
                 }
 
@@ -383,6 +390,32 @@ class AuthViewModel : ViewModel() {
                     loadingMessage = null,
                     error = "Sign in failed: ${e.localizedMessage}"
                 )
+            }
+        }
+    }
+
+    private fun captureBaseline(context: Context) {
+        viewModelScope.launch {
+            try {
+                Log.d(TAG, "📊 Capturing baseline screen time for new user...")
+                val repository = UsageStatsRepository(context)
+                
+                // Check if we have usage access permission
+                if (!repository.hasUsageAccessPermission()) {
+                    Log.w(TAG, "⚠️ No usage access permission - cannot capture baseline")
+                    return@launch
+                }
+                
+                val baseline30DayAverage = repository.getLast30DayAverageScreenTime()
+                if (baseline30DayAverage != null && baseline30DayAverage > 0) {
+                    UserPrefs.saveBaselineScreenTime(context, baseline30DayAverage)
+                    Log.d(TAG, "✅ Baseline captured: ${baseline30DayAverage}ms (${baseline30DayAverage / (1000 * 60)} minutes)")
+                } else {
+                    Log.w(TAG, "⚠️ No baseline data available - will try again later")
+                    // Don't mark as captured if no data available
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Failed to capture baseline: ${e.message}", e)
             }
         }
     }

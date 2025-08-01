@@ -59,6 +59,7 @@ fun DashboardScreen(
     val repository = remember { UsageStatsRepository(context) }
     val firestoreRepository = remember { FirestoreRepository() }
     var usageStats by remember { mutableStateOf<DailyUsage?>(null) }
+    var monthlyAverage by remember { mutableStateOf<Long?>(null) }
     var isSyncing by remember { mutableStateOf(false) }
     var syncMessage by remember { mutableStateOf<String?>(null) }
     var showDebugInfo by remember { mutableStateOf(false) }
@@ -71,6 +72,8 @@ fun DashboardScreen(
     LaunchedEffect(Unit) {
         scope.launch {
             usageStats = repository.getTodayUsageStats()
+            // Always calculate the current 30-day rolling average
+            monthlyAverage = repository.getLast30DayAverageScreenTime()
         }
     }
 
@@ -207,6 +210,16 @@ fun DashboardScreen(
                     
                     Spacer(modifier = Modifier.height(16.dp))
                     
+                    // 30-Day Average Section
+                    monthlyAverage?.let { average ->
+                        val baselineScreenTime = UserPrefs.getBaselineScreenTime(context)
+                        AverageSection(
+                            average = average,
+                            baseline = baselineScreenTime
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                    
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -215,71 +228,31 @@ fun DashboardScreen(
                         Column {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "Social Media:",
+                                    text = "Socials:",
                                     style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = formatDuration(stats.socialMediaTimeMillis),
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    text = "Entertainment:",
+                                    text = "Streaming:",
                                     style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.secondary
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = formatDuration(stats.entertainmentTimeMillis),
                                     style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.secondary
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                        }
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    isSyncing = true
-                                    syncMessage = null
-                                    try {
-                                        val stats = repository.getLast24HoursUsageStats()
-                                        if (stats != null) {
-                                            firestoreRepository.uploadUsageData(context, stats)
-                                            syncMessage = "Successfully synced to database!"
-                                        } else {
-                                            syncMessage = "No usage data available"
-                                        }
-                                    } catch (e: Exception) {
-                                        syncMessage = "Sync failed: ${e.message}"
-                                    } finally {
-                                        isSyncing = false
-                                    }
-                                }
-                            },
-                            enabled = !isSyncing,
-                            shape = RoundedCornerShape(12.dp),
-                            border = ButtonDefaults.outlinedButtonBorder.copy(width = 2.dp)
-                        ) {
-                            if (isSyncing) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(16.dp),
-                                    strokeWidth = 2.dp,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Default.Refresh,
-                                    contentDescription = "Sync",
-                                    tint = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (isSyncing) "Syncing..." else "Sync", color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
@@ -355,34 +328,29 @@ private fun GoalSection(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Daily Goal",
+                text = "Daily Goal: ${formatDuration(goalTime)}",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Button(
+            TextButton(
                 onClick = onEditGoal,
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer
-                )
+                shape = RoundedCornerShape(8.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Edit,
                     contentDescription = "Edit Goal",
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = "Edit Goal",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
+
         // Progress Bar
         Box(
             modifier = Modifier
@@ -406,9 +374,7 @@ private fun GoalSection(
                     )
             )
         }
-        
-        Spacer(modifier = Modifier.height(8.dp))
-        
+
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -433,11 +399,62 @@ private fun GoalSection(
 }
 
 @Composable
+private fun AverageSection(
+    average: Long,
+    baseline: Long?
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Last 30 Days",
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            
+            // Show percentage change if baseline is available and not zero
+            baseline?.let { baselineTime ->
+                if (baselineTime > 0) {
+                    val percentageChange = ((average - baselineTime).toFloat() / baselineTime.toFloat() * 100).toInt()
+                    val absPercentage = kotlin.math.abs(percentageChange)
+                    
+                    // Only show percentage if it's not zero
+                    if (absPercentage > 0) {
+                        val isImprovement = percentageChange < 0
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = if (isImprovement) "Down $absPercentage%" else "Up $absPercentage%",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (isImprovement) Color(0xFF4CAF50) else Color(0xFFF44336) // Green for down, Red for up
+                        )
+                    }
+                }
+            }
+        }
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
+        Text(
+            text = formatDuration(average),
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
 private fun GoalEditModal(
     currentGoal: Long,
     onGoalSaved: (Long) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
+    val baselineScreenTime = remember { UserPrefs.getBaselineScreenTime(context) }
+    
     var hours by remember { mutableStateOf((currentGoal / (1000 * 60 * 60)).toString()) }
     var minutes by remember { mutableStateOf(((currentGoal % (1000 * 60 * 60)) / (1000 * 60)).toString()) }
     var hoursError by remember { mutableStateOf<String?>(null) }
@@ -485,6 +502,7 @@ private fun GoalEditModal(
                             onValueChange = { 
                                 hours = it.filter { char -> char.isDigit() }
                                 hoursError = null
+                                minutesError = null // Clear any baseline error when user changes input
                             },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
@@ -508,14 +526,25 @@ private fun GoalEditModal(
                             onValueChange = { 
                                 minutes = it.filter { char -> char.isDigit() }
                                 minutesError = null
+                                hoursError = null // Clear any baseline error when user changes input
                             },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
                             isError = minutesError != null,
-                            supportingText = minutesError?.let { { Text(it) } },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
+                }
+                
+                // Display error message below the input fields, spanning full width
+                minutesError?.let { error ->
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
                 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -553,6 +582,17 @@ private fun GoalEditModal(
                             }
                             
                             val totalMillis = (hoursInt * 60 * 60 * 1000L) + (minutesInt * 60 * 1000L)
+                            
+                            // Check if goal exceeds baseline screen time
+                            baselineScreenTime?.let { baseline ->
+                                if (totalMillis > baseline) {
+                                    val baselineHours = baseline / (60 * 60 * 1000)
+                                    val baselineMinutes = (baseline % (60 * 60 * 1000)) / (60 * 1000)
+                                    minutesError = "Goal cannot exceed your baseline screen time of ${baselineHours}h ${baselineMinutes}m"
+                                    return@Button
+                                }
+                            }
+                            
                             onGoalSaved(totalMillis)
                         },
                         modifier = Modifier.weight(1f),
@@ -586,6 +626,12 @@ private fun getProgressColor(progress: Float): Color {
 @Composable
 private fun DebugInfoCard() {
     val context = LocalContext.current
+    val repository = remember { UsageStatsRepository(context) }
+    val firestoreRepository = remember { FirestoreRepository() }
+    var isSyncing by remember { mutableStateOf(false) }
+    var syncMessage by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    
     var workInfo by remember { mutableStateOf<WorkInfo?>(null) }
     var workName by remember { mutableStateOf<String?>(null) }
     var timeUntilNextSync by remember { mutableStateOf<String?>(null) }
@@ -593,6 +639,7 @@ private fun DebugInfoCard() {
     var lastRunTime by remember { mutableStateOf<Long>(0L) }
     val savedPhone = remember { UserPrefs.getPhone(context) }
     val savedUid = remember { UserPrefs.getUid(context) }
+    val baselineScreenTime = remember { UserPrefs.getBaselineScreenTime(context) }
     
     fun getLastRunTime(context: Context): Long {
         val prefs = context.getSharedPreferences("usage_sync_prefs", Context.MODE_PRIVATE)
@@ -660,6 +707,7 @@ private fun DebugInfoCard() {
             DebugRow("Phone Number", savedPhone ?: "Not saved")
             DebugRow("User UID", savedUid ?: "Not saved")
             DebugRow("Usage Permission", if (UsageStatsPermissionChecker.hasUsageAccessPermission(context)) "✓ Granted" else "✗ Denied")
+            DebugRow("Baseline Screen Time", baselineScreenTime?.let { formatDuration(it) + " (Pre-app)" } ?: "Not captured")
             workInfo?.let { info ->
                 val workType = when (workName) {
                     "immediate_usage_sync" -> "Immediate"
@@ -681,18 +729,43 @@ private fun DebugInfoCard() {
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 Button(
+                    onClick = {
+                        scope.launch {
+                            isSyncing = true
+                            try {
+                                val stats = repository.getLast24HoursUsageStats()
+                                if (stats != null) {
+                                    firestoreRepository.uploadUsageData(context, stats)
+                                    syncMessage = "Successfully synced to database!"
+                                } else {
+                                    syncMessage = "No usage data available"
+                                }
+                            } catch (e: Exception) {
+                                syncMessage = "Sync failed: ${e.message}"
+                            } finally {
+                                isSyncing = false
+                            }
+                        }
+                    },
+                    enabled = !isSyncing
+                ) {
+                    if (isSyncing) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    } else {
+                        Text("Sync Now", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+                
+                Button(
                     onClick = { 
                         DailyMidnightScheduler.reset(context)
                     }
                 ) {
-                    Text("Reset Midnight", style = MaterialTheme.typography.bodySmall)
-                }
-                Button(
-                    onClick = { 
-                        DailyMidnightScheduler.checkStatus(context)
-                    }
-                ) {
-                    Text("Check Midnight", style = MaterialTheme.typography.bodySmall)
+                    Text("Reset Midnight Sync", style = MaterialTheme.typography.bodySmall)
                 }
             }
         }

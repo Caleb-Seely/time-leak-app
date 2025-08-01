@@ -293,4 +293,63 @@ class UsageStatsRepository(private val context: Context) {
         }
         context.startActivity(intent)
     }
+    
+    /**
+     * Calculates the average daily screen time over the last 30 days
+     * @return Average daily screen time in milliseconds, or null if no data available
+     */
+    fun getLast30DayAverageScreenTime(): Long? {
+        if (!hasUsageAccessPermission()) {
+            return null
+        }
+        
+        try {
+            val endTime = System.currentTimeMillis()
+            val startTime = endTime - (30 * 24 * 60 * 60 * 1000L) // 30 days in milliseconds
+            
+            // Get usage stats for the last 30 days
+            val usageStats = usageStatsManager.queryUsageStats(
+                UsageStatsManager.INTERVAL_DAILY,
+                startTime,
+                endTime
+            )
+            
+            if (usageStats.isNullOrEmpty()) {
+                return null
+            }
+            
+            // Group usage stats by day and calculate daily totals
+            val dailyTotals = mutableMapOf<String, Long>()
+            
+            usageStats.forEach { stats ->
+                if (stats.totalTimeInForeground > 0) {
+                    // Convert timestamp to date string (YYYY-MM-DD format)
+                    val calendar = Calendar.getInstance()
+                    calendar.timeInMillis = stats.lastTimeUsed
+                    val dateKey = String.format(
+                        "%04d-%02d-%02d",
+                        calendar.get(Calendar.YEAR),
+                        calendar.get(Calendar.MONTH) + 1,
+                        calendar.get(Calendar.DAY_OF_MONTH)
+                    )
+                    
+                    // Add to daily total for this day
+                    dailyTotals[dateKey] = dailyTotals.getOrDefault(dateKey, 0L) + stats.totalTimeInForeground
+                }
+            }
+            
+            // Calculate average from daily totals
+            return if (dailyTotals.isNotEmpty()) {
+                val totalScreenTime = dailyTotals.values.sum()
+                val daysWithData = dailyTotals.size
+                totalScreenTime / daysWithData
+            } else {
+                null
+            }
+            
+        } catch (e: Exception) {
+            e.printStackTrace()
+            return null
+        }
+    }
 }
