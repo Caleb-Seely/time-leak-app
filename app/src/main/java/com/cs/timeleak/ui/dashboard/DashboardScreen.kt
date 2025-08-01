@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.work.OneTimeWorkRequestBuilder
 import com.cs.timeleak.sync.UsageSyncWorker
@@ -169,7 +171,7 @@ fun DashboardScreen(
         }
 
         usageStats?.let { stats ->
-            // Row for Total Screen Time and Sync Button
+            // Row for Total Screen Time
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -187,38 +189,13 @@ fun DashboardScreen(
                 ) {
                     Column {
                         Text(
-                            text = "Total Screen Time:",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
                             text = formatDuration(stats.totalScreenTimeMillis),
-                            style = MaterialTheme.typography.headlineMedium,
+                            style = MaterialTheme.typography.headlineLarge,
                             color = getScreenTimeColor(stats.totalScreenTimeMillis, goalTimeMillis)
                         )
                     }
                     
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // Goal Section
-                    GoalSection(
-                        currentUsage = stats.totalScreenTimeMillis,
-                        goalTime = goalTimeMillis,
-                        onEditGoal = { showGoalModal = true }
-                    )
-                    
-                    Spacer(modifier = Modifier.height(16.dp))
-                    
-                    // 30-Day Average Section
-                    monthlyAverage?.let { average ->
-                        val baselineScreenTime = UserPrefs.getBaselineScreenTime(context)
-                        AverageSection(
-                            average = average,
-                            baseline = baselineScreenTime
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                    }
+                    Spacer(modifier = Modifier.height(8.dp))
                     
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -226,35 +203,83 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Socials:",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = formatDuration(stats.socialMediaTimeMillis),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                            // Social and Streaming in pill shapes on same row
+                            Row(
+                                modifier = Modifier
+                                    .padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                // Social Media Pill
+                                Row(
+                                    modifier = Modifier
+                                        .offset(x = (-6).dp) // Negative margin to move left
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            shape = RoundedCornerShape(20.dp)
+                                        )
+                                        .padding(horizontal = 6.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Socials:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                    Text(
+                                        text = formatDuration(stats.socialMediaTimeMillis),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
+                                
+                                // Streaming Pill
+                                Row(
+                                    modifier = Modifier
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            shape = RoundedCornerShape(20.dp)
+                                        )
+                                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Streaming:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                    Text(
+                                        text = formatDuration(stats.entertainmentTimeMillis),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
                             }
+
                             Spacer(modifier = Modifier.height(8.dp))
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "Streaming:",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = formatDuration(stats.entertainmentTimeMillis),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                            // 30-Day Average Section
+                            monthlyAverage?.let { average ->
+                                val baselineScreenTime = UserPrefs.getBaselineScreenTime(context)
+
+                                AverageSection(
+                                    average = average,
+                                    baseline = baselineScreenTime
                                 )
                             }
                         }
                     }
+                    
+                    Spacer(modifier = Modifier.height(8.dp))
+                    
+                    // Goal Section
+                    GoalSection(
+                        currentUsage = stats.totalScreenTimeMillis,
+                        goalTime = goalTimeMillis,
+                        onEditGoal = { showGoalModal = true }
+                    )
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
@@ -320,7 +345,8 @@ private fun GoalSection(
     val percentage = (progress * 100).toInt()
     
     Column(
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+//        verticalArrangement = Arrangement.spacedBy((-2).dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -332,9 +358,9 @@ private fun GoalSection(
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            TextButton(
-                onClick = onEditGoal,
-                shape = RoundedCornerShape(8.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.clickable { onEditGoal() }
             ) {
                 Icon(
                     imageVector = Icons.Default.Edit,
@@ -350,7 +376,35 @@ private fun GoalSection(
                 )
             }
         }
-
+        
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isOverGoal) "Over: " else "Remaining: ",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = formatDuration(remainingTime),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = getProgressColor(progress)
+                )
+            }
+            Text(
+                text = "$percentage%",
+                style = MaterialTheme.typography.titleSmall,
+                color = getProgressColor(progress)
+            )
+        }
+        
+        Spacer(modifier = Modifier.height(4.dp))
+        
         // Progress Bar
         Box(
             modifier = Modifier
@@ -374,27 +428,6 @@ private fun GoalSection(
                     )
             )
         }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = if (isOverGoal) {
-                    "${formatDuration(remainingTime)} over goal"
-                } else {
-                    "${formatDuration(remainingTime)} remaining"
-                },
-                style = MaterialTheme.typography.bodyMedium,
-                color = getProgressColor(progress)
-            )
-            Text(
-                text = "$percentage%",
-                style = MaterialTheme.typography.titleSmall,
-                color = getProgressColor(progress)
-            )
-        }
     }
 }
 
@@ -403,46 +436,35 @@ private fun AverageSection(
     average: Long,
     baseline: Long?
 ) {
-    Column(
-        modifier = Modifier.fillMaxWidth()
+    Row(
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Last 30 Days",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            
-            // Show percentage change if baseline is available and not zero
-            baseline?.let { baselineTime ->
-                if (baselineTime > 0) {
-                    val percentageChange = ((average - baselineTime).toFloat() / baselineTime.toFloat() * 100).toInt()
-                    val absPercentage = kotlin.math.abs(percentageChange)
+        Text(
+            text = "30-day avg: ${formatDuration(average)}",
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        
+        // Show percentage change if baseline is available and not zero
+        baseline?.let { baselineTime ->
+            if (baselineTime > 0) {
+                val percentageChange = ((average - baselineTime).toFloat() / baselineTime.toFloat() * 100).toInt()
+                val absPercentage = kotlin.math.abs(percentageChange)
+                
+                // Only show percentage if it's not zero
+                if (absPercentage > 0) {
+                    val isImprovement = percentageChange < 0
+                    val arrow = if (isImprovement) "▼" else "▲" // Using thick triangle arrows
                     
-                    // Only show percentage if it's not zero
-                    if (absPercentage > 0) {
-                        val isImprovement = percentageChange < 0
-                        
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (isImprovement) "Down $absPercentage%" else "Up $absPercentage%",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = if (isImprovement) Color(0xFF4CAF50) else Color(0xFFF44336) // Green for down, Red for up
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "$arrow$absPercentage%",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = androidx.compose.ui.text.font.FontWeight.Bold),
+                        color = if (isImprovement) Color(0xFF4CAF50) else Color(0xFFF44336) // Green for down, Red for up
+                    )
                 }
             }
         }
-        
-        Spacer(modifier = Modifier.height(4.dp))
-        
-        Text(
-            text = formatDuration(average),
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
@@ -478,7 +500,7 @@ private fun GoalEditModal(
                 modifier = Modifier.padding(24.dp)
             ) {
                 Text(
-                    text = "Set Daily Screen Time Goal",
+                    text = "Set Daily Goal",
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(bottom = 16.dp)
