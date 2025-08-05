@@ -7,6 +7,8 @@ import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import androidx.work.Configuration
+import com.google.firebase.crashlytics.FirebaseCrashlytics
+import com.google.firebase.analytics.FirebaseAnalytics
 
 class MyApplication : Application(), Configuration.Provider {
     private val TAG = "MyApplication"
@@ -19,6 +21,14 @@ class MyApplication : Application(), Configuration.Provider {
             // Initialize Firebase
             val firebaseApp = FirebaseApp.initializeApp(this)
             Log.d(TAG, "✅ Firebase initialized successfully")
+
+            // Initialize Crashlytics
+            val crashlytics = FirebaseCrashlytics.getInstance()
+            crashlytics.setCrashlyticsCollectionEnabled(true)
+
+            // Initialize Analytics
+            val analytics = FirebaseAnalytics.getInstance(this)
+            analytics.setAnalyticsCollectionEnabled(true)
             Log.d(TAG, "Firebase app name: ${firebaseApp?.name}")
             Log.d(TAG, "Firebase project ID: ${firebaseApp?.options?.projectId}")
             Log.d(TAG, "Firebase application ID: ${firebaseApp?.options?.applicationId}")

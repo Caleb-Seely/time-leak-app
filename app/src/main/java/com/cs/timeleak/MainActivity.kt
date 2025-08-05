@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import com.cs.timeleak.ui.dashboard.DashboardScreen
 import com.cs.timeleak.ui.onboarding.OnboardingScreen
 import com.cs.timeleak.ui.auth.AuthScreen
+import com.cs.timeleak.ui.onboarding.IntroPage
 import com.cs.timeleak.utils.UsageStatsPermissionChecker
 import com.cs.timeleak.utils.BatteryOptimizationHelper
 import com.cs.timeleak.utils.FirebaseDebugHelper
@@ -65,6 +66,7 @@ class MainActivity : ComponentActivity() {
                         mutableStateOf(auth.currentUser != null)
                     }
                     var hasScheduledSync by remember { mutableStateOf(false) }
+                    var showIntroPage by remember { mutableStateOf(true) }
                     var showOnboarding by remember {
                         mutableStateOf(
                             !UsageStatsPermissionChecker.hasUsageAccessPermission(this)
@@ -81,6 +83,13 @@ class MainActivity : ComponentActivity() {
                     }
 
                     when {
+                        showIntroPage -> {
+                            IntroPage(
+                                onContinue = {
+                                    showIntroPage = false
+                                }
+                            )
+                        }
                         !isAuthenticated -> {
                             // Always sign out before showing AuthScreen to prevent auto-login as previous/test user
                             LaunchedEffect(Unit) {
