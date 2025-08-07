@@ -137,7 +137,7 @@ private fun AudienceTagSection(
         content.title?.let { title ->
             androidx.compose.material3.Text(
                 text = title,
-                style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
+                style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
                 color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant
             )
         }

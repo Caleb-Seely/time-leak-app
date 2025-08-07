@@ -21,19 +21,19 @@ object WorkManagerDiagnostics {
             
             Log.d(TAG, "=== WorkManager Diagnostics ===")
             
-            // Check periodic sync work
+            // Check midnight sync work (daily 24-hour sync)
             try {
-                val periodicWorkInfos = workManager.getWorkInfosForUniqueWork("daily_usage_sync").get()
-                Log.d(TAG, "Daily periodic sync work status:")
-                if (periodicWorkInfos.isEmpty()) {
-                    Log.w(TAG, "  ❌ No daily periodic sync work found!")
+                val midnightWorkInfos = workManager.getWorkInfosForUniqueWork("daily_midnight_sync").get()
+                Log.d(TAG, "Daily midnight sync work status:")
+                if (midnightWorkInfos.isEmpty()) {
+                    Log.w(TAG, "  ❌ No daily midnight sync work found!")
                 } else {
-                    periodicWorkInfos.forEach { workInfo ->
-                        logWorkInfo("  Periodic Sync", workInfo)
+                    midnightWorkInfos.forEach { workInfo ->
+                        logWorkInfo("  Midnight Sync", workInfo)
                     }
                 }
             } catch (e: ExecutionException) {
-                Log.e(TAG, "Failed to get daily sync work info: ${e.message}")
+                Log.e(TAG, "Failed to get midnight sync work info: ${e.message}")
             }
             
             // Check immediate sync work
@@ -51,20 +51,6 @@ object WorkManagerDiagnostics {
                 Log.e(TAG, "Failed to get immediate sync work info: ${e.message}")
             }
             
-            // Check test sync work
-            try {
-                val testSyncInfos = workManager.getWorkInfosForUniqueWork("test_usage_sync").get()
-                Log.d(TAG, "Test sync work status:")
-                if (testSyncInfos.isEmpty()) {
-                    Log.d(TAG, "  ✅ No test sync work (expected)")
-                } else {
-                    testSyncInfos.forEach { workInfo ->
-                        logWorkInfo("  Test Sync", workInfo)
-                    }
-                }
-            } catch (e: ExecutionException) {
-                Log.e(TAG, "Failed to get test sync work info: ${e.message}")
-            }
             
             // Check last run time from SharedPreferences
             val prefs = context.getSharedPreferences("usage_sync_prefs", Context.MODE_PRIVATE)
@@ -125,48 +111,4 @@ object WorkManagerDiagnostics {
         }
     }
     
-    /**
-     * Cancels all existing work and reschedules fresh daily sync
-     */
-    fun resetDailySync(context: Context) {
-        try {
-            Log.d(TAG, "🔄 Resetting daily sync...")
-            val workManager = WorkManager.getInstance(context)
-            
-            // Cancel all existing work
-            workManager.cancelUniqueWork("daily_usage_sync")
-            workManager.cancelUniqueWork("immediate_usage_sync") 
-            workManager.cancelUniqueWork("test_usage_sync")
-            
-            Log.d(TAG, "Cancelled all existing sync work")
-            
-            // Wait a moment for cancellation to process
-            Thread.sleep(1000)
-            
-            // Reschedule daily sync
-            SyncScheduler.scheduleDailyPeriodicSync(context)
-            
-            Log.d(TAG, "✅ Daily sync has been reset and rescheduled")
-            
-            // Check status after reset
-            Thread.sleep(2000)
-            checkWorkStatus(context)
-            
-        } catch (e: Exception) {
-            Log.e(TAG, "Error resetting daily sync: ${e.message}", e)
-        }
-    }
-    
-    /**
-     * Schedules a test sync in 2 minutes to verify the system is working
-     */
-    fun scheduleTestSyncInTwoMinutes(context: Context) {
-        try {
-            Log.d(TAG, "🧪 Scheduling test sync in 2 minutes...")
-            SyncScheduler.scheduleTestSync(context)
-            Log.d(TAG, "✅ Test sync scheduled - check logs in 2 minutes")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling test sync: ${e.message}", e)
-        }
-    }
 }

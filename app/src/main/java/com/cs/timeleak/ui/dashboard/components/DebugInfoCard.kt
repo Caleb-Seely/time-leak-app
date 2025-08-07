@@ -64,12 +64,12 @@ fun DebugInfoCard(
     LaunchedEffect(Unit) {
         val workManager = WorkManager.getInstance(context)
         try {
-            // Check for daily sync first
-            var workInfos = workManager.getWorkInfosForUniqueWork("daily_usage_sync").get()
+            // Check for midnight sync first
+            var workInfos = workManager.getWorkInfosForUniqueWork("daily_midnight_sync").get()
             workInfo = workInfos.firstOrNull()
-            workName = if (workInfo != null) "daily_usage_sync" else null
+            workName = if (workInfo != null) "daily_midnight_sync" else null
             
-            // If no daily sync, check for immediate sync
+            // If no midnight sync, check for immediate sync
             if (workInfo == null) {
                 workInfos = workManager.getWorkInfosForUniqueWork("immediate_usage_sync").get()
                 workInfo = workInfos.firstOrNull()
@@ -86,12 +86,12 @@ fun DebugInfoCard(
         while (true) {
             val workManager = WorkManager.getInstance(context)
             try {
-                // Check for daily sync first
-                var workInfos = workManager.getWorkInfosForUniqueWork("daily_usage_sync").get()
+                // Check for midnight sync first
+                var workInfos = workManager.getWorkInfosForUniqueWork("daily_midnight_sync").get()
                 workInfo = workInfos.firstOrNull()
-                workName = if (workInfo != null) "daily_usage_sync" else null
+                workName = if (workInfo != null) "daily_midnight_sync" else null
                 
-                // If no daily sync, check for immediate sync
+                // If no midnight sync, check for immediate sync
                 if (workInfo == null) {
                     workInfos = workManager.getWorkInfosForUniqueWork("immediate_usage_sync").get()
                     workInfo = workInfos.firstOrNull()
@@ -128,7 +128,7 @@ fun DebugInfoCard(
             workInfo?.let { info ->
                 val workType = when (workName) {
                     "immediate_usage_sync" -> "Immediate"
-                    "daily_usage_sync" -> "Daily"
+                    "daily_midnight_sync" -> "Daily (Midnight)"
                     else -> "Unknown"
                 }
                 DebugRow("Work Status", "${info.state.name} (${workType})")
