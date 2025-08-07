@@ -34,7 +34,8 @@ data class AuthState(
     val isLoading: Boolean = false,
     val loadingMessage: String? = null,
     val isAuthenticated: Boolean = false,
-    val error: String? = null
+    val error: String? = null,
+    val hasFailedForCurrentNumber: Boolean = false // Track if current number failed
 )
 
 class AuthViewModel : ViewModel() {
@@ -42,6 +43,9 @@ class AuthViewModel : ViewModel() {
     private val TAG = "AuthViewModel"
     private val stateMutex = Mutex()
     private var appContext: Context? = null
+    
+    // Store the ForceResendingToken for resend operations
+    private var forceResendingToken: PhoneAuthProvider.ForceResendingToken? = null
     
     private val _authState = MutableStateFlow(AuthState())
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
@@ -63,20 +67,31 @@ class AuthViewModel : ViewModel() {
     fun updateCountryCode(countryCode: String) {
         _authState.value = _authState.value.copy(
             countryCode = countryCode,
-            error = null
+            error = null,
+            isLoading = false,
+            loadingMessage = null
         )
     }
     
     fun updatePhoneNumber(phoneNumber: String) {
-        _authState.value = _authState.value.copy(
+        val currentState = _authState.value
+        val isNumberChanged = phoneNumber != currentState.phoneNumber
+        _authState.value = currentState.copy(
             phoneNumber = phoneNumber,
-            error = null
+            // Clear hasFailedForCurrentNumber if user changes the phone number
+            hasFailedForCurrentNumber = if (isNumberChanged) false else currentState.hasFailedForCurrentNumber
         )
     }
     
     fun updateOtp(otp: String) {
         _authState.value = _authState.value.copy(
             otp = otp,
+            error = null
+        )
+    }
+    
+    fun clearError() {
+        _authState.value = _authState.value.copy(
             error = null
         )
     }
@@ -137,10 +152,35 @@ class AuthViewModel : ViewModel() {
     }
     
     fun sendVerificationCode(activity: android.app.Activity) {
+        val currentState = _authState.value
+        Log.d(TAG, "🔄 sendVerificationCode called")
+        Log.d(TAG, "🔄 Current state - isLoading: ${currentState.isLoading}, verificationId: ${currentState.verificationId?.take(10)}..., hasFailedForCurrentNumber: ${currentState.hasFailedForCurrentNumber}")
+        Log.d(TAG, "🔄 Phone: '${currentState.phoneNumber}', Country: '${currentState.countryCode}'")
+        
+        // Check if this is a resend (we already have a verification ID)
+        val isResend = currentState.verificationId != null
+        Log.d(TAG, "🔄 Is this a resend operation? $isResend")
+        
+        // Prevent multiple rapid calls
+        if (currentState.isLoading) {
+            Log.w(TAG, "🔄 Already sending verification code, ignoring duplicate request")
+            Log.w(TAG, "🔄 Current loading message: '${currentState.loadingMessage}'")
+            return
+        }
+        
+        val phoneNumberToSubmit = currentState.phoneNumber
+        
+        Log.d(TAG, "📞 sendVerificationCode called with phone: '$phoneNumberToSubmit'")
+        Log.d(TAG, "📞 Current AuthViewModel state: phoneNumber='${currentState.phoneNumber}', isLoading=${currentState.isLoading}")
+        
+        // Store the phone number but DON'T clear it yet - wait for error/success
+        // This prevents premature clearing that breaks state sync
+        Log.d(TAG, "📞 Keeping phone number in AuthViewModel during processing")
+        
         val activityRef = WeakReference(activity)
 
-        val countryCode = _authState.value.countryCode
-        val phoneNumber = _authState.value.phoneNumber
+        val countryCode = currentState.countryCode
+        val phoneNumber = phoneNumberToSubmit // Use the stored number
         val fullPhoneNumber = countryCode + phoneNumber
 
         Log.d(TAG, "=== PHONE VERIFICATION START ===")
@@ -156,7 +196,11 @@ class AuthViewModel : ViewModel() {
         if (phoneNumber.isBlank()) {
             Log.w(TAG, "Phone number validation failed: blank")
             viewModelScope.launch {
-                updateState { copy(error = "Please enter a phone number") }
+                updateState { copy(
+                    error = "Please enter a phone number",
+                    isLoading = false,
+                    loadingMessage = null
+                ) }
             }
             return
         }
@@ -165,7 +209,9 @@ class AuthViewModel : ViewModel() {
         if (phoneNumber.length != 10) {
             Log.w(TAG, "Phone number validation failed: length=${phoneNumber.length}, expected=10")
             _authState.value = _authState.value.copy(
-                error = "Phone number must be exactly 10 digits"
+                error = "Phone number must be exactly 10 digits",
+                isLoading = false,
+                loadingMessage = null
             )
             return
         }
@@ -174,7 +220,9 @@ class AuthViewModel : ViewModel() {
         if (!countryCode.startsWith("+") || countryCode.length < 2 || countryCode.length > 4) {
             Log.w(TAG, "Country code validation failed: '$countryCode', length=${countryCode.length}")
             _authState.value = _authState.value.copy(
-                error = "Invalid country code format"
+                error = "Invalid country code format",
+                isLoading = false,
+                loadingMessage = null
             )
             return
         }
@@ -183,7 +231,9 @@ class AuthViewModel : ViewModel() {
         if (!countryCode.substring(1).all { it.isDigit() }) {
             Log.w(TAG, "Country code validation failed: contains non-digits: '${countryCode.substring(1)}'")
             _authState.value = _authState.value.copy(
-                error = "Country code must contain only digits after +"
+                error = "Country code must contain only digits after +",
+                isLoading = false,
+                loadingMessage = null
             )
             return
         }
@@ -196,7 +246,9 @@ class AuthViewModel : ViewModel() {
         Log.d(TAG, "Network connectivity available: $networkAvailable")
         if (!networkAvailable) {
             _authState.value = _authState.value.copy(
-                error = "No internet connection. Please check your network and try again."
+                error = "No internet connection. Please check your network and try again.",
+                isLoading = false,
+                loadingMessage = null
             )
             return
         }
@@ -206,7 +258,9 @@ class AuthViewModel : ViewModel() {
         Log.d(TAG, "Google Play Services available: $gpsAvailable")
         if (!gpsAvailable) {
             _authState.value = _authState.value.copy(
-                error = "Google Play Services is required for phone verification. Please install or update Google Play Services."
+                error = "Google Play Services is required for phone verification. Please install or update Google Play Services.",
+                isLoading = false,
+                loadingMessage = null
             )
             return
         }
@@ -216,28 +270,47 @@ class AuthViewModel : ViewModel() {
         
         viewModelScope.launch {
             try {
-                Log.d(TAG, "Starting verification process in coroutine")
+                Log.d(TAG, "🚀 Starting verification process in coroutine")
+                Log.d(TAG, "🚀 Thread: ${Thread.currentThread().name}")
+                Log.d(TAG, "🚀 ViewModel scope active: ${viewModelScope.isActive}")
+                
+                val loadingMessage = if (isResend) "Resending verification code..." else "Sending verification code..."
+                Log.d(TAG, "🚀 Setting loading state: '$loadingMessage'")
+                
                 _authState.value = _authState.value.copy(
                     isLoading = true,
-                    loadingMessage = "Sending verification code...",
+                    loadingMessage = loadingMessage,
                     error = null
                 )
                 
-                Log.d(TAG, "Creating PhoneAuthProvider callbacks")
+                Log.d(TAG, "🚀 State updated - isLoading: ${_authState.value.isLoading}, message: '${_authState.value.loadingMessage}'")
+                
+                Log.d(TAG, "📞 Creating PhoneAuthProvider callbacks")
                 val callbacks = object : PhoneAuthProvider.OnVerificationStateChangedCallbacks() {
                     override fun onVerificationCompleted(credential: PhoneAuthCredential) {
-                        Log.d(TAG, "✅ Auto-verification completed successfully")
-                        Log.d(TAG, "Credential SMS code: ${credential.smsCode}")
+                        Log.d(TAG, "✅ onVerificationCompleted called - Auto-verification successful!")
+                        Log.d(TAG, "✅ Credential SMS code: ${credential.smsCode}")
+                        Log.d(TAG, "✅ ViewModel scope active: ${viewModelScope.isActive}")
+                        Log.d(TAG, "✅ Activity reference valid: ${activityRef.get() != null}")
+                        
                         // Check if ViewModel is still active
                         if (viewModelScope.isActive) {
+                            Log.d(TAG, "✅ Starting sign-in with credential...")
                             viewModelScope.launch {
                                 signInWithCredential(credential, activityRef.get())
                             }
+                        } else {
+                            Log.w(TAG, "⚠️ ViewModel scope not active, skipping auto sign-in")
                         }
                     }
 
                     override fun onVerificationFailed(e: com.google.firebase.FirebaseException) {
-                        Log.e(TAG, "❌ VERIFICATION FAILED", e)
+                        Log.e(TAG, "❌ onVerificationFailed called")
+                        Log.e(TAG, "❌ Exception type: ${e.javaClass.simpleName}")
+                        Log.e(TAG, "❌ Exception message: ${e.message}")
+                        Log.e(TAG, "❌ Exception cause: ${e.cause?.message}")
+                        Log.e(TAG, "❌ ViewModel scope active: ${viewModelScope.isActive}")
+                        Log.i(TAG, "❌ Clearing phone number to prevent infinite loop retry")
 
                         val errorMessage = mapFirebaseError(e)
 
@@ -246,11 +319,18 @@ class AuthViewModel : ViewModel() {
                             viewModelScope.launch {
                                 updateState {
                                     copy(
+                                        phoneNumber = "",      // CRITICAL: Clear phone number to prevent infinite loop
+                                        verificationId = null, // Clear verification ID to return to phone input
+                                        otp = "",             // Clear any partial OTP
                                         isLoading = false,
                                         loadingMessage = null,
-                                        error = errorMessage
+                                        error = errorMessage,
+                                        hasFailedForCurrentNumber = true // Mark this number as failed
                                     )
                                 }
+                                // Clear the force resending token on failure
+                                forceResendingToken = null
+                                Log.d(TAG, "❌ Cleared ForceResendingToken due to verification failure")
                             }
                         }
                     }
@@ -259,9 +339,18 @@ class AuthViewModel : ViewModel() {
                         verificationId: String,
                         token: PhoneAuthProvider.ForceResendingToken
                     ) {
-                        Log.d(TAG, "✅ CODE SENT SUCCESSFULLY")
-                        Log.d(TAG, "Verification ID: ${verificationId.take(10)}...")
+                        Log.d(TAG, "🎉 onCodeSent called - CODE SENT SUCCESSFULLY!")
+                        Log.d(TAG, "🎉 Verification ID: ${verificationId.take(10)}...")
+                        Log.d(TAG, "🎉 Resend token: ${token.javaClass.simpleName}")
+                        Log.d(TAG, "🎉 ViewModel scope active: ${viewModelScope.isActive}")
+                        Log.d(TAG, "🎉 Current thread: ${Thread.currentThread().name}")
+                        
+                        // CRITICAL: Store the ForceResendingToken for future resend operations
+                        forceResendingToken = token
+                        Log.d(TAG, "🎉 Stored ForceResendingToken for future resends")
+                        
                         if (viewModelScope.isActive) {
+                            Log.d(TAG, "🎉 Updating state with new verification ID...")
                             viewModelScope.launch {
                                 updateState {
                                     copy(
@@ -270,35 +359,110 @@ class AuthViewModel : ViewModel() {
                                         loadingMessage = null
                                     )
                                 }
+                                Log.d(TAG, "🎉 State updated - verification screen should now show")
+                                Log.d(TAG, "🎉 New state - isLoading: ${_authState.value.isLoading}, verificationId exists: ${_authState.value.verificationId != null}")
                             }
+                        } else {
+                            Log.w(TAG, "⚠️ ViewModel scope not active, cannot update state")
                         }
                     }
                 }
                 
-                Log.d(TAG, "Building PhoneAuthOptions...")
-                val options = PhoneAuthOptions.newBuilder(auth)
+                Log.d(TAG, "🏗️ Building PhoneAuthOptions...")
+                Log.d(TAG, "🏗️ Activity: ${activity.javaClass.simpleName}@${activity.hashCode()}")
+                Log.d(TAG, "🏗️ Activity is finishing: ${activity.isFinishing}")
+                Log.d(TAG, "🏗️ Activity is destroyed: ${activity.isDestroyed}")
+                
+                val optionsBuilder = PhoneAuthOptions.newBuilder(auth)
                     .setPhoneNumber(fullPhoneNumber)
                     .setTimeout(120L, TimeUnit.SECONDS) // Increased timeout
                     .setActivity(activity)
                     .setCallbacks(callbacks)
-                    .build()
+                    
+                // Add force resend token if this is a resend operation
+                if (isResend && currentState.verificationId != null) {
+                    if (forceResendingToken != null) {
+                        Log.d(TAG, "🏗️ Adding stored ForceResendingToken for resend operation")
+                        optionsBuilder.setForceResendingToken(forceResendingToken!!)
+                    } else {
+                        Log.w(TAG, "🏗️ Resend requested but no ForceResendingToken available - this may cause the resend to be ignored")
+                        Log.w(TAG, "🏗️ Proceeding without token - Firebase may silently ignore this request")
+                        // Clear verification state to retry from phone input if no token available
+                        _authState.value = _authState.value.copy(
+                            verificationId = null,
+                            otp = "",
+                            isLoading = false,
+                            loadingMessage = null,
+                            error = "Please try sending the code again"
+                        )
+                        return@launch
+                    }
+                }
                 
-                Log.d(TAG, "PhoneAuthOptions created successfully")
-                Log.d(TAG, "Calling PhoneAuthProvider.verifyPhoneNumber()...")
+                val options = optionsBuilder.build()
+                
+                Log.d(TAG, "🏗️ PhoneAuthOptions created successfully")
+                Log.d(TAG, "🚀 Calling PhoneAuthProvider.verifyPhoneNumber()...")
+                Log.d(TAG, "🚀 Expecting callbacks: onCodeSent, onVerificationCompleted, or onVerificationFailed")
+                
                 PhoneAuthProvider.verifyPhoneNumber(options)
-                Log.d(TAG, "PhoneAuthProvider.verifyPhoneNumber() called - waiting for callbacks...")
+                
+                Log.d(TAG, "🚀 PhoneAuthProvider.verifyPhoneNumber() called - now waiting for callbacks...")
+                Log.d(TAG, "🚀 If no callbacks fire within 2 minutes, there may be a network or configuration issue")
+                
+                // Add timeout mechanism to handle cases where callbacks never fire
+                viewModelScope.launch {
+                    kotlinx.coroutines.delay(130_000L) // 130 seconds (slightly longer than Firebase timeout)
+                    
+                    // Check if we're still in loading state after timeout
+                    if (_authState.value.isLoading && _authState.value.loadingMessage?.contains("verification code") == true) {
+                        Log.w(TAG, "⏰ Firebase callbacks timeout - no response after 130 seconds")
+                        Log.w(TAG, "⏰ Current state: loading=${_authState.value.isLoading}, verificationId exists=${_authState.value.verificationId != null}")
+                        
+                        _authState.value = _authState.value.copy(
+                            verificationId = null,
+                            otp = "",
+                            isLoading = false,
+                            loadingMessage = null,
+                            error = "Request timed out. Please try again."
+                        )
+                        
+                        // Clear the force resending token on timeout
+                        forceResendingToken = null
+                        Log.d(TAG, "⏰ Cleared ForceResendingToken due to timeout")
+                    }
+                }
                 
             } catch (e: Exception) {
-                Log.e(TAG, "❌ EXCEPTION DURING PHONE VERIFICATION")
-                Log.e(TAG, "Exception type: ${e.javaClass.simpleName}")
-                Log.e(TAG, "Exception message: ${e.message}")
-                Log.e(TAG, "Exception cause: ${e.cause?.message}")
-                Log.e(TAG, "Full stack trace:", e)
+                Log.e(TAG, "💥 EXCEPTION DURING PHONE VERIFICATION")
+                Log.e(TAG, "💥 Exception type: ${e.javaClass.simpleName}")
+                Log.e(TAG, "💥 Exception message: ${e.message}")
+                Log.e(TAG, "💥 Exception cause: ${e.cause?.message}")
+                Log.e(TAG, "💥 Thread: ${Thread.currentThread().name}")
+                Log.e(TAG, "💥 ViewModel scope active: ${viewModelScope.isActive}")
+                Log.e(TAG, "💥 Full stack trace:", e)
+                
+                Log.d(TAG, "💥 Exception handler: About to clear state to prevent infinite loop")
+                Log.d(TAG, "💥 Before exception state update: phoneNumber='${_authState.value.phoneNumber}', verificationId exists: ${_authState.value.verificationId != null}")
+                
+                val shouldClearPhone = !isResend // Only clear phone number if this wasn't a resend
+                Log.d(TAG, "💥 Should clear phone number: $shouldClearPhone (isResend: $isResend)")
+                
                 _authState.value = _authState.value.copy(
+                    phoneNumber = if (shouldClearPhone) "" else _authState.value.phoneNumber, // Keep phone on resend failure
+                    verificationId = null, // Clear verification ID to return to phone input
+                    otp = "",             // Clear any partial OTP
                     isLoading = false,
                     loadingMessage = null,
                     error = "Failed to send code: ${e.message}"
                 )
+                
+                // Clear the force resending token on exception
+                forceResendingToken = null
+                Log.d(TAG, "💥 Cleared ForceResendingToken due to exception")
+                
+                Log.d(TAG, "💥 After exception state update: phoneNumber='${_authState.value.phoneNumber}', isLoading: ${_authState.value.isLoading}")
+                Log.d(TAG, "💥 This should ${if (shouldClearPhone) "trigger state sync and return to phone input" else "show error but stay on OTP screen"}")
             }
         }
     }
@@ -328,6 +492,8 @@ class AuthViewModel : ViewModel() {
             } catch (e: Exception) {
                 Log.e(TAG, "Code verification failed: ${e.message}", e)
                 _authState.value = _authState.value.copy(
+                    verificationId = null, // Clear verification ID to return to phone input
+                    otp = "",             // Clear any partial OTP
                     isLoading = false,
                     loadingMessage = null,
                     error = "Verification failed: ${e.message}"
@@ -377,6 +543,8 @@ class AuthViewModel : ViewModel() {
             }
             updateState {
                 copy(
+                    verificationId = null, // Clear verification ID to return to phone input
+                    otp = "",             // Clear any partial OTP
                     isLoading = false,
                     loadingMessage = null,
                     error = errorMessage
@@ -386,6 +554,8 @@ class AuthViewModel : ViewModel() {
             Log.e(TAG, "Unexpected error during sign in", e)
             updateState {
                 copy(
+                    verificationId = null, // Clear verification ID to return to phone input
+                    otp = "",             // Clear any partial OTP
                     isLoading = false,
                     loadingMessage = null,
                     error = "Sign in failed: ${e.localizedMessage}"
@@ -420,6 +590,20 @@ class AuthViewModel : ViewModel() {
         }
     }
 
+    /**
+     * Clear verification state and return to phone input screen
+     * Preserves error message so user knows what went wrong
+     */
+    fun clearVerificationState() {
+        _authState.value = _authState.value.copy(
+            verificationId = null,
+            otp = "",
+            isLoading = false,
+            loadingMessage = null
+            // Preserve error message - don't clear it
+        )
+    }
+    
     private fun mapFirebaseError(e: com.google.firebase.FirebaseException): String {
         return when {
             e.message?.contains("17499") == true ->

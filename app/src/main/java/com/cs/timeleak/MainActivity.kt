@@ -11,9 +11,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.cs.timeleak.ui.dashboard.DashboardScreen
-import com.cs.timeleak.ui.onboarding.OnboardingScreen
-import com.cs.timeleak.ui.auth.AuthScreen
-import com.cs.timeleak.ui.onboarding.IntroPage
+import com.cs.timeleak.ui.onboarding.screens.IntroPageWithDebug
+import com.cs.timeleak.ui.onboarding.screens.HowItWorksPageWithDebug
+import com.cs.timeleak.ui.onboarding.screens.AuthScreenWithDebug
+import com.cs.timeleak.ui.onboarding.screens.PermissionsScreenWithDebug
 import com.cs.timeleak.utils.UsageStatsPermissionChecker
 import com.cs.timeleak.utils.BatteryOptimizationHelper
 import com.cs.timeleak.utils.FirebaseDebugHelper
@@ -29,8 +30,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
+import com.cs.timeleak.ui.onboarding.permission.PermissionViewModel
+import com.cs.timeleak.ui.onboarding.model.OnboardingAction
 
 class MainActivity : ComponentActivity() {
     private val TAG = "MainActivity"
@@ -54,6 +55,7 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "App startup - Current user: ${auth.currentUser?.phoneNumber ?: "None"}")
         
         otpViewModel = AuthViewModel()
+        val permissionViewModel = PermissionViewModel()
         
         setContent {
             MaterialTheme {
@@ -97,9 +99,12 @@ class MainActivity : ComponentActivity() {
 
                     when {
                         actualShowIntroPage -> {
-                            com.cs.timeleak.ui.onboarding.IntroPageWithDebugNav(
-                                onContinue = {
-                                    debugStep = 1
+                            IntroPageWithDebug(
+                                onAction = { action ->
+                                    when (action) {
+                                        OnboardingAction.NextStep -> debugStep = 1
+                                        else -> { /* Handle other actions if needed */ }
+                                    }
                                 },
                                 onBack = { /* No back from intro */ },
                                 onForward = { debugStep = 1 },
@@ -109,9 +114,12 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         actualShowHowItWorks -> {
-                            com.cs.timeleak.ui.onboarding.HowItWorksPageWithDebugNav(
-                                onContinue = {
-                                    debugStep = 2
+                            HowItWorksPageWithDebug(
+                                onAction = { action ->
+                                    when (action) {
+                                        OnboardingAction.NextStep -> debugStep = 2
+                                        else -> { /* Handle other actions if needed */ }
+                                    }
                                 },
                                 onBack = { debugStep = 0 },
                                 onForward = { debugStep = 2 },
@@ -121,24 +129,33 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         actualShowAuth -> {
-                            com.cs.timeleak.ui.auth.AuthScreenWithDebugNav(
-                                onAuthSuccess = {
-                                    debugStep = 3
+                            AuthScreenWithDebug(
+                                onAction = { action ->
+                                    when (action) {
+                                        OnboardingAction.NextStep -> debugStep = 3
+                                        else -> { /* Handle other actions if needed */ }
+                                    }
                                 },
+                                authViewModel = otpViewModel!!,
                                 onBack = { debugStep = 1 },
                                 onForward = { debugStep = 3 },
                                 canGoBack = true,
                                 canGoForward = true,
-                                currentStep = "Auth (3/4)",
-                                viewModel = otpViewModel!!
+                                currentStep = "Auth (3/4)"
                             )
                         }
                         actualShowOnboarding -> {
-                            com.cs.timeleak.ui.onboarding.OnboardingScreenWithDebugNav(
-                                onPermissionGranted = {
-                                    Log.d(TAG, "Debug: Moving to dashboard")
-                                    debugStep = 4 // Move to dashboard or reset
+                            PermissionsScreenWithDebug(
+                                onAction = { action ->
+                                    when (action) {
+                                        OnboardingAction.NextStep -> {
+                                            Log.d(TAG, "Debug: Moving to dashboard")
+                                            debugStep = 4 // Move to dashboard or reset
+                                        }
+                                        else -> { /* Handle other actions if needed */ }
+                                    }
                                 },
+                                permissionViewModel = permissionViewModel,
                                 onBack = { debugStep = 2 },
                                 onForward = { 
                                     Log.d(TAG, "Debug: Skipping to dashboard") 
@@ -161,15 +178,19 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // Re-check permission when returning to the foreground
+                    // Simple lifecycle handling for permission detection
                     val lifecycleOwner = LocalLifecycleOwner.current
                     DisposableEffect(lifecycleOwner) {
                         val observer = LifecycleEventObserver { _, event ->
                             if (event == Lifecycle.Event.ON_RESUME) {
+                                Log.d(TAG, "ON_RESUME - App returned to foreground")
                                 val hasUsageAccess = UsageStatsPermissionChecker.hasUsageAccessPermission(this@MainActivity)
-                                val shouldShowOnboarding = !hasUsageAccess
-                                Log.d(TAG, "ON_RESUME - hasUsageAccess: $hasUsageAccess, shouldShowOnboarding: $shouldShowOnboarding, current showOnboarding: $showOnboarding")
-                                showOnboarding = shouldShowOnboarding
+                                Log.d(TAG, "ON_RESUME - hasUsageAccess: $hasUsageAccess, current showOnboarding: $showOnboarding")
+                                
+                                // Update permission state in ViewModel - this triggers the UI update
+                                permissionViewModel.checkPermissionStatus(this@MainActivity)
+                                
+                                showOnboarding = !hasUsageAccess
                             }
                         }
                         lifecycleOwner.lifecycle.addObserver(observer)
