@@ -220,26 +220,12 @@ private fun PhoneNumberForm(
                 modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.Top
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Lock,
-                    contentDescription = "Privacy",
-                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier
-                        .size(24.dp)
-                        .padding(end = 4.dp)
-                )
 
                 Column(
                     modifier = Modifier.padding(start = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = "Privacy & Accountability",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-
+                    
                     // Phone number collection
                     Row(
                         verticalAlignment = Alignment.Top,
