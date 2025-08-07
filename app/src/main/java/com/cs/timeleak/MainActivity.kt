@@ -29,6 +29,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
 
 class MainActivity : ComponentActivity() {
     private val TAG = "MainActivity"
@@ -66,12 +68,23 @@ class MainActivity : ComponentActivity() {
                         mutableStateOf(auth.currentUser != null)
                     }
                     var hasScheduledSync by remember { mutableStateOf(false) }
+                    
+                    // Debug navigation state
+                    var debugStep by remember { mutableStateOf(0) } // 0=intro, 1=how-it-works, 2=auth, 3=permissions
+                    
+                    // Original states (temporarily overridden by debug)
                     var showIntroPage by remember { mutableStateOf(true) }
                     var showOnboarding by remember {
                         mutableStateOf(
                             !UsageStatsPermissionChecker.hasUsageAccessPermission(this)
                         )
                     }
+                    
+                    // Override states with debug navigation
+                    val actualShowIntroPage = debugStep == 0
+                    val actualShowHowItWorks = debugStep == 1
+                    val actualShowAuth = debugStep == 2
+                    val actualShowOnboarding = debugStep == 3
 
                     // Listen for authentication state changes
                     LaunchedEffect(Unit) {
@@ -83,38 +96,57 @@ class MainActivity : ComponentActivity() {
                     }
 
                     when {
-                        showIntroPage -> {
-                            IntroPage(
+                        actualShowIntroPage -> {
+                            com.cs.timeleak.ui.onboarding.IntroPageWithDebugNav(
                                 onContinue = {
-                                    showIntroPage = false
-                                }
+                                    debugStep = 1
+                                },
+                                onBack = { /* No back from intro */ },
+                                onForward = { debugStep = 1 },
+                                canGoBack = false,
+                                canGoForward = true,
+                                currentStep = "Intro (1/4)"
                             )
                         }
-                        !isAuthenticated -> {
-                            // Always sign out before showing AuthScreen to prevent auto-login as previous/test user
-                            LaunchedEffect(Unit) {
-                                FirebaseAuth.getInstance().signOut()
-                                UserPrefs.clear(applicationContext)
-                                Log.d(TAG, "Signed out any previous user before showing AuthScreen")
-                            }
-                            AuthScreen(
-                                onAuthSuccess = {
-                                    isAuthenticated = true
-                                    // Schedule immediate sync after successful authentication (only for new users)
-                                    if (!hasScheduledSync) {
-                                        SyncScheduler.scheduleImmediateSync(applicationContext)
-                                        hasScheduledSync = true
-                                    }
+                        actualShowHowItWorks -> {
+                            com.cs.timeleak.ui.onboarding.HowItWorksPageWithDebugNav(
+                                onContinue = {
+                                    debugStep = 2
                                 },
+                                onBack = { debugStep = 0 },
+                                onForward = { debugStep = 2 },
+                                canGoBack = true,
+                                canGoForward = true,
+                                currentStep = "How It Works (2/4)"
+                            )
+                        }
+                        actualShowAuth -> {
+                            com.cs.timeleak.ui.auth.AuthScreenWithDebugNav(
+                                onAuthSuccess = {
+                                    debugStep = 3
+                                },
+                                onBack = { debugStep = 1 },
+                                onForward = { debugStep = 3 },
+                                canGoBack = true,
+                                canGoForward = true,
+                                currentStep = "Auth (3/4)",
                                 viewModel = otpViewModel!!
                             )
                         }
-                        showOnboarding -> {
-                            OnboardingScreen(
+                        actualShowOnboarding -> {
+                            com.cs.timeleak.ui.onboarding.OnboardingScreenWithDebugNav(
                                 onPermissionGranted = {
-                                    Log.d(TAG, "Onboarding permission granted callback - setting showOnboarding to false")
-                                    showOnboarding = false
-                                }
+                                    Log.d(TAG, "Debug: Moving to dashboard")
+                                    debugStep = 4 // Move to dashboard or reset
+                                },
+                                onBack = { debugStep = 2 },
+                                onForward = { 
+                                    Log.d(TAG, "Debug: Skipping to dashboard") 
+                                    debugStep = 4
+                                },
+                                canGoBack = true,
+                                canGoForward = true,
+                                currentStep = "Permissions (4/4)"
                             )
                         }
                         else -> {
@@ -123,6 +155,7 @@ class MainActivity : ComponentActivity() {
                                 onSignOut = {
                                     otpViewModel!!.signOut(applicationContext)
                                     isAuthenticated = false
+                                    debugStep = 0 // Reset to intro for debugging
                                 }
                             )
                         }

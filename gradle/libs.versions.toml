@@ -11,11 +11,13 @@ appcompat = "1.7.0"
 kotlinxCoroutinesPlayServices = "1.7.3"
 material = "1.12.0"
 firebaseFirestore = "26.0.0"
+materialIconsExtended = "1.7.8"
 playServicesMeasurementApi = "23.0.0"
 firebaseCrashlyticsKtx = "20.0.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
+androidx-material-icons-extended = { module = "androidx.compose.material:material-icons-extended", version.ref = "materialIconsExtended" }
 androidx-material3 = { module = "androidx.compose.material3:material3" }
 androidx-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
 androidx-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }

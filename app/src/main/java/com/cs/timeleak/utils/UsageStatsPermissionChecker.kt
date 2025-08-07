@@ -17,7 +17,11 @@ object UsageStatsPermissionChecker {
         return mode == AppOpsManager.MODE_ALLOWED
     }
 
-    fun getUsageAccessSettingsIntent(): Intent {
-        return Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+    fun getUsageAccessSettingsIntent(context: Context): Intent {
+        return Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+            // Try to open directly to the app's usage access page
+            // This works on most Android versions but falls back gracefully
+            data = android.net.Uri.parse("package:${context.packageName}")
+        }
     }
 } 

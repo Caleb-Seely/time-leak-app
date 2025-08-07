@@ -19,6 +19,7 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.TileMode
@@ -30,6 +31,18 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import com.cs.timeleak.R
+import com.cs.timeleak.ui.onboarding.StandardizedHeader
+import com.cs.timeleak.ui.onboarding.GradientText
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.PersonPin
 
 @Composable
 fun AuthScreen(
@@ -47,74 +60,65 @@ fun AuthScreen(
     }
 
     Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .offset(y = (-80).dp), // Shift content up to place it in top third
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .fillMaxSize()
+                .padding(horizontal = 20.dp)
+                .padding(top = 40.dp, bottom = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // App Icon
-            Image(
-                painter = painterResource(R.drawable.icon),
-                contentDescription = "App Icon",
-                modifier = Modifier
-                    .size(96.dp)
-                    .padding(bottom = 8.dp)
+            // Standardized Header - Fixed position
+            StandardizedHeader(
+                subtitle = "Sign in with your phone number to track your screen time"
             )
 
-            // Gradient Welcome Text
-            GradientText(
-                text = "Welcome to TimeLeak",
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
+            // Scrollable content
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
 
-            Text(
-                text = "Sign in with your phone number to track your screen time",
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+                when {
+                    authState.isLoading -> {
+                        CircularProgressIndicator(
+                            modifier = Modifier.padding(16.dp)
+                        )
+                        Text(
+                            text = authState.loadingMessage ?: "Loading...",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center
+                        )
+                    }
 
-            when {
-                authState.isLoading -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.padding(16.dp)
-                    )
-                    Text(
-                        text = authState.loadingMessage ?: "Loading...",
-                        style = MaterialTheme.typography.bodyMedium,
-                        textAlign = TextAlign.Center
-                    )
-                }
+                    authState.verificationId == null -> {
+                        // Phone number input screen
+                        PhoneNumberInput(
+                            countryCode = authState.countryCode,
+                            onCountryCodeChange = { viewModel.updateCountryCode(it) },
+                            phoneNumber = authState.phoneNumber,
+                            onPhoneNumberChange = { viewModel.updatePhoneNumber(it) },
+                            onSendCode = { viewModel.sendVerificationCode(activity) },
+                            isError = authState.error != null,
+                            errorMessage = authState.error
+                        )
+                    }
 
-                authState.verificationId == null -> {
-                    // Phone number input screen
-                    PhoneNumberInput(
-                        countryCode = authState.countryCode,
-                        onCountryCodeChange = { viewModel.updateCountryCode(it) },
-                        phoneNumber = authState.phoneNumber,
-                        onPhoneNumberChange = { viewModel.updatePhoneNumber(it) },
-                        onSendCode = { viewModel.sendVerificationCode(activity) },
-                        isError = authState.error != null,
-                        errorMessage = authState.error
-                    )
-                }
-
-                else -> {
-                    // OTP verification screen
-                    OtpVerification(
-                        otp = authState.otp,
-                        onOtpChange = { viewModel.updateOtp(it) },
-                        onVerifyCode = { viewModel.verifyCode(activity) },
-                        onResendCode = { viewModel.sendVerificationCode(activity) },
-                        isError = authState.error != null,
-                        errorMessage = authState.error
-                    )
+                    else -> {
+                        // OTP verification screen
+                        OtpVerification(
+                            otp = authState.otp,
+                            onOtpChange = { viewModel.updateOtp(it) },
+                            onVerifyCode = { viewModel.verifyCode(activity) },
+                            onResendCode = { viewModel.sendVerificationCode(activity) },
+                            isError = authState.error != null,
+                            errorMessage = authState.error
+                        )
+                    }
                 }
             }
         }
@@ -133,7 +137,7 @@ private fun PhoneNumberInput(
 ) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -187,6 +191,7 @@ private fun PhoneNumberInput(
             )
         }
 
+        // Send Code Button
         Button(
             onClick = onSendCode,
             enabled = phoneNumber.length == 10,
@@ -196,8 +201,121 @@ private fun PhoneNumberInput(
         ) {
             Text("Send Verification Code")
         }
+
+        // Privacy explanation section - moved below button
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+            border = CardDefaults.outlinedCardBorder()
+        ) {
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Lock,
+                    contentDescription = "Privacy",
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .padding(end = 4.dp)
+                )
+
+                Column(
+                    modifier = Modifier.padding(start = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Privacy & Accountability",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+
+                    // Phone number collection
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Phone,
+                            contentDescription = "Phone data",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "We only ask for your phone number — no names, emails, or other info",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 18.sp
+                        )
+                    }
+
+                    // Data linking
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Link,
+                            contentDescription = "Data linking",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Your number links your screen time to you, but it's never advertised",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 18.sp
+                        )
+                    }
+
+                    // Visibility/accountability
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Insights,
+                            contentDescription = "Visibility",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Anyone who knows your number can see yesterday's total — that's the point",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 18.sp
+                        )
+                    }
+
+                    // Balance
+                    Row(
+                        verticalAlignment = Alignment.Top,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Visibility,
+                            contentDescription = "Privacy balance",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Text(
+                            text = "Just enough for accountability, not enough for concern",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 18.sp
+                        )
+                    }
+                }
+            }
+        }
     }
 }
+
 
 // Custom VisualTransformation for phone number formatting
 class PhoneNumberVisualTransformation : VisualTransformation {
@@ -328,21 +446,64 @@ private fun OtpVerification(
     }
 }
 
+
 @Composable
-fun GradientText(text: String, modifier: Modifier = Modifier) {
-    val gradient = Brush.linearGradient(
-        colors = listOf(Color(0xFF2196F3), Color(0xFF9C27B0)), // Blue to Purple
-        start = androidx.compose.ui.geometry.Offset(0f, 0f),
-        end = androidx.compose.ui.geometry.Offset(400f, 0f)
-    )
-    Text(
-        text = text,
-        style = MaterialTheme.typography.headlineMedium.copy(
-            brush = gradient,
-            fontWeight = FontWeight.Bold,
-            fontSize = 32.sp
-        ),
-        modifier = modifier,
-        textAlign = TextAlign.Center
-    )
+fun AuthScreenWithDebugNav(
+    onAuthSuccess: () -> Unit,
+    onBack: () -> Unit,
+    onForward: () -> Unit,
+    canGoBack: Boolean,
+    canGoForward: Boolean,
+    currentStep: String,
+    viewModel: AuthViewModel
+) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        AuthScreen(
+            onAuthSuccess = onAuthSuccess,
+            viewModel = viewModel
+        )
+
+        // Debug navigation buttons at top
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 16.dp)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "DEBUG: $currentStep",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly
+            ) {
+                IconButton(
+                    onClick = onBack,
+                    enabled = canGoBack
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowBack,
+                        contentDescription = "Debug Back",
+                        tint = if (canGoBack) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    )
+                }
+
+                IconButton(
+                    onClick = onForward,
+                    enabled = canGoForward
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowForward,
+                        contentDescription = "Debug Forward",
+                        tint = if (canGoForward) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
+                    )
+                }
+            }
+        }
+    }
 }
