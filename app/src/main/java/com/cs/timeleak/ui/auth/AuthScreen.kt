@@ -2,13 +2,13 @@ package com.cs.timeleak.ui.auth
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
-
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -18,31 +18,18 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.TileMode
-import androidx.compose.ui.graphics.ShaderBrush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.cs.timeleak.R
 import com.cs.timeleak.ui.onboarding.StandardizedHeader
-import com.cs.timeleak.ui.onboarding.GradientText
-import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.PersonPin
 
 @Composable
 fun AuthScreen(
@@ -96,13 +83,13 @@ fun AuthScreen(
                     }
 
                     authState.verificationId == null -> {
-                        // Phone number input screen
-                        PhoneNumberInput(
+                        // Phone number input form (without button)
+                        PhoneNumberForm(
                             countryCode = authState.countryCode,
                             onCountryCodeChange = { viewModel.updateCountryCode(it) },
                             phoneNumber = authState.phoneNumber,
                             onPhoneNumberChange = { viewModel.updatePhoneNumber(it) },
-                            onSendCode = { viewModel.sendVerificationCode(activity) },
+                            onSubmit = { viewModel.sendVerificationCode(context as android.app.Activity) },
                             isError = authState.error != null,
                             errorMessage = authState.error
                         )
@@ -121,20 +108,49 @@ fun AuthScreen(
                     }
                 }
             }
+            
+            // Bottom Button Area - Fixed at bottom (only show for phone number input)
+            if (!authState.isLoading && authState.verificationId == null) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(top = 16.dp)
+                ) {
+                    Button(
+                        onClick = { viewModel.sendVerificationCode(activity) },
+                        enabled = authState.phoneNumber.length == 10,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = "Send Verification Code",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun PhoneNumberInput(
+private fun PhoneNumberForm(
     countryCode: String,
     onCountryCodeChange: (String) -> Unit,
     phoneNumber: String,
     onPhoneNumberChange: (String) -> Unit,
-    onSendCode: () -> Unit,
+    onSubmit: () -> Unit,
     isError: Boolean,
     errorMessage: String?
 ) {
+    // Auto-submit when phone number reaches 10 digits
+    LaunchedEffect(phoneNumber) {
+        if (phoneNumber.length == 10) {
+            onSubmit()
+        }
+    }
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(20.dp)
@@ -191,18 +207,7 @@ private fun PhoneNumberInput(
             )
         }
 
-        // Send Code Button
-        Button(
-            onClick = onSendCode,
-            enabled = phoneNumber.length == 10,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-        ) {
-            Text("Send Verification Code")
-        }
-
-        // Privacy explanation section - moved below button
+        // Privacy explanation section
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
@@ -316,7 +321,6 @@ private fun PhoneNumberInput(
     }
 }
 
-
 // Custom VisualTransformation for phone number formatting
 class PhoneNumberVisualTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
@@ -412,7 +416,7 @@ private fun OtpVerification(
                         .width(48.dp)
                         .padding(2.dp)
                         .focusRequester(focusRequesters[i]),
-                    textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.Center),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(textAlign = TextAlign.Center),
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     isError = isError
                 )
@@ -445,7 +449,6 @@ private fun OtpVerification(
         }
     }
 }
-
 
 @Composable
 fun AuthScreenWithDebugNav(
@@ -487,7 +490,7 @@ fun AuthScreenWithDebugNav(
                     enabled = canGoBack
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Debug Back",
                         tint = if (canGoBack) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                     )
@@ -498,7 +501,7 @@ fun AuthScreenWithDebugNav(
                     enabled = canGoForward
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.ArrowForward,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = "Debug Forward",
                         tint = if (canGoForward) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f)
                     )

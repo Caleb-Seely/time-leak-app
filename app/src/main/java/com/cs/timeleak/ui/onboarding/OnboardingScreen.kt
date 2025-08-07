@@ -225,29 +225,30 @@ fun IntroPage(
                     lineHeight = 18.sp
                 )
             }
+            }
+            
+            // Bottom Button Area - Fixed at bottom
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 16.dp)
+            ) {
 
-                // Call to Action
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                Text(
+                    text = "Setup takes less than 2 minutes",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Button(
+                    onClick = onContinue,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Button(
-                        onClick = onContinue,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            text = "Start Your Journey",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
-
                     Text(
-                        text = "Setup takes less than 2 minutes",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        text = "Start Your Journey",
+                        style = MaterialTheme.typography.titleMedium
                     )
                 }
             }
@@ -375,24 +376,25 @@ fun HowItWorksPage(
                         )
                     }
                 }
-
-                // Call to Action
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+            }
+            
+            // Bottom Button Area - Fixed at bottom
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(top = 16.dp)
+            ) {
+                Button(
+                    onClick = onContinue,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Button(
-                        onClick = onContinue,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(52.dp),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            text = "Continue",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                    }
+                    Text(
+                        text = "Continue",
+                        style = MaterialTheme.typography.titleMedium
+                    )
                 }
             }
         }
@@ -523,9 +525,37 @@ private fun UsagePermissionStep(
     onPermissionGranted: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var isWaitingForPermission by remember { mutableStateOf(false) }
+    
+    // Monitor for permission changes when waiting
+    LaunchedEffect(isWaitingForPermission) {
+        if (isWaitingForPermission) {
+            // Check permission every 500ms while waiting
+            while (isWaitingForPermission) {
+                kotlinx.coroutines.delay(500)
+                val hasPermission = UsageStatsPermissionChecker.hasUsageAccessPermission(context)
+                if (hasPermission) {
+                    Log.d("UsagePermissionStep", "Permission detected! Bringing app to foreground")
+                    isWaitingForPermission = false
+                    onPermissionGranted()
+                    // Bring app to foreground
+                    val activity = context as? android.app.Activity
+                    activity?.let {
+                        val intent = android.content.Intent(context, context::class.java)
+                        intent.flags = android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or 
+                                      android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                                      android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                        context.startActivity(intent)
+                    }
+                    break
+                }
+            }
+        }
+    }
 
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Standardized Header - Fixed position
@@ -535,6 +565,7 @@ private fun UsagePermissionStep(
         
         // Scrollable content
         Column(
+            modifier = Modifier.weight(1f),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
@@ -584,36 +615,62 @@ private fun UsagePermissionStep(
                 )
             }
         }
-
-        Button(
-            onClick = {
-                context.startActivity(UsageStatsPermissionChecker.getUsageAccessSettingsIntent(context))
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = MaterialTheme.colorScheme.primary
-            )
-        ) {
-            Icon(
-                imageVector = Icons.Outlined.Settings,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text = "Open Settings",
-                style = MaterialTheme.typography.labelLarge
-            )
+        
         }
-
-            Text(
-                text = "After enabling access, return to the app to continue",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        
+        // Bottom Button Area - Fixed at bottom
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(top = 16.dp)
+        ) {
+            if (isWaitingForPermission) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = "Waiting for permission...",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            } else {
+                Text(
+                    text = "This is the last step in setting up TimeLeak",
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick = {
+                    isWaitingForPermission = true
+                    context.startActivity(UsageStatsPermissionChecker.getUsageAccessSettingsIntent(context))
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(52.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                ),
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Settings,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Grant Permission",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
         }
     }
 }
