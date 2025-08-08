@@ -11,10 +11,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import com.cs.timeleak.ui.dashboard.DashboardScreen
-import com.cs.timeleak.ui.onboarding.screens.IntroPageWithDebug
-import com.cs.timeleak.ui.onboarding.screens.HowItWorksPageWithDebug
-import com.cs.timeleak.ui.onboarding.screens.AuthScreenWithDebug
-import com.cs.timeleak.ui.onboarding.screens.PermissionsScreenWithDebug
+import com.cs.timeleak.ui.onboarding.screens.IntroPage
+import com.cs.timeleak.ui.onboarding.screens.HowItWorksPage
+import com.cs.timeleak.ui.onboarding.screens.AuthScreen
+import com.cs.timeleak.ui.onboarding.screens.PermissionsScreen
 import com.cs.timeleak.utils.UsageStatsPermissionChecker
 import com.cs.timeleak.utils.BatteryOptimizationHelper
 import com.cs.timeleak.utils.FirebaseDebugHelper
@@ -57,7 +57,7 @@ class MainActivity : ComponentActivity() {
         otpViewModel = AuthViewModel()
         val permissionViewModel = PermissionViewModel()
         
-        setContent {
+                setContent {
             MaterialTheme {
                 Surface(
                     modifier = Modifier
@@ -71,22 +71,56 @@ class MainActivity : ComponentActivity() {
                     }
                     var hasScheduledSync by remember { mutableStateOf(false) }
                     
-                    // Debug navigation state
-                    var debugStep by remember { mutableStateOf(0) } // 0=intro, 1=how-it-works, 2=auth, 3=permissions
+                    // Check authentication and permission states
+                    val authenticationState = remember {
+                        derivedStateOf {
+                            val isAuthenticated = auth.currentUser != null
+                            val hasPermissions = UsageStatsPermissionChecker.hasUsageAccessPermission(this@MainActivity)
+                            
+                            when {
+                                isAuthenticated && hasPermissions -> "dashboard" // Skip to dashboard
+                                isAuthenticated && !hasPermissions -> "permissions" // Skip to permissions only
+                                else -> "onboarding" // Full onboarding flow
+                            }
+                        }
+                    }.value
                     
-                    // Original states (temporarily overridden by debug)
-                    var showIntroPage by remember { mutableStateOf(true) }
-                    var showOnboarding by remember {
+                    // Debug navigation state - determined by authentication state
+                    var debugStep by remember { 
                         mutableStateOf(
-                            !UsageStatsPermissionChecker.hasUsageAccessPermission(this)
-                        )
+                            when (authenticationState) {
+                                "dashboard" -> 4 // Skip to dashboard
+                                "permissions" -> 3 // Skip to permissions screen
+                                else -> 0 // Start at intro
+                            }
+                        ) 
                     }
                     
+                    // Update debug step when authentication or permission state changes
+                    LaunchedEffect(authenticationState) {
+                        when (authenticationState) {
+                            "dashboard" -> {
+                                Log.d(TAG, "User is authenticated and has permissions, skipping to dashboard")
+                                debugStep = 4
+                            }
+                            "permissions" -> {
+                                Log.d(TAG, "User is authenticated but missing permissions, skipping to permissions screen")
+                                debugStep = 3
+                            }
+                            "onboarding" -> {
+                                Log.d(TAG, "User needs full onboarding, starting from intro")
+                                debugStep = 0
+                            }
+                        }
+                    }
+                    
+                    // Screen display logic based on current state
+                    
                     // Override states with debug navigation
-                    val actualShowIntroPage = debugStep == 0
-                    val actualShowHowItWorks = debugStep == 1
-                    val actualShowAuth = debugStep == 2
-                    val actualShowOnboarding = debugStep == 3
+                    val actualShowIntroPage = debugStep == 0 && authenticationState == "onboarding"
+                    val actualShowHowItWorks = debugStep == 1 && authenticationState == "onboarding"
+                    val actualShowAuth = debugStep == 2 && authenticationState == "onboarding"
+                    val actualShowOnboarding = debugStep == 3 // Show permissions for both "permissions" and "onboarding" states
 
                     // Listen for authentication state changes
                     LaunchedEffect(Unit) {
@@ -99,71 +133,48 @@ class MainActivity : ComponentActivity() {
 
                     when {
                         actualShowIntroPage -> {
-                            IntroPageWithDebug(
+                            IntroPage(
                                 onAction = { action ->
                                     when (action) {
                                         OnboardingAction.NextStep -> debugStep = 1
                                         else -> { /* Handle other actions if needed */ }
                                     }
-                                },
-                                onBack = { /* No back from intro */ },
-                                onForward = { debugStep = 1 },
-                                canGoBack = false,
-                                canGoForward = true,
-                                currentStep = "Intro (1/4)"
+                                }
                             )
                         }
                         actualShowHowItWorks -> {
-                            HowItWorksPageWithDebug(
+                            HowItWorksPage(
                                 onAction = { action ->
                                     when (action) {
                                         OnboardingAction.NextStep -> debugStep = 2
                                         else -> { /* Handle other actions if needed */ }
                                     }
-                                },
-                                onBack = { debugStep = 0 },
-                                onForward = { debugStep = 2 },
-                                canGoBack = true,
-                                canGoForward = true,
-                                currentStep = "How It Works (2/4)"
+                                }
                             )
                         }
                         actualShowAuth -> {
-                            AuthScreenWithDebug(
+                            AuthScreen(
                                 onAction = { action ->
                                     when (action) {
                                         OnboardingAction.NextStep -> debugStep = 3
                                         else -> { /* Handle other actions if needed */ }
                                     }
                                 },
-                                authViewModel = otpViewModel!!,
-                                onBack = { debugStep = 1 },
-                                onForward = { debugStep = 3 },
-                                canGoBack = true,
-                                canGoForward = true,
-                                currentStep = "Auth (3/4)"
+                                authViewModel = otpViewModel!!
                             )
                         }
                         actualShowOnboarding -> {
-                            PermissionsScreenWithDebug(
+                            PermissionsScreen(
                                 onAction = { action ->
                                     when (action) {
                                         OnboardingAction.NextStep -> {
-                                            Log.d(TAG, "Debug: Moving to dashboard")
-                                            debugStep = 4 // Move to dashboard or reset
+                                            Log.d(TAG, "Moving to dashboard")
+                                            debugStep = 4
                                         }
                                         else -> { /* Handle other actions if needed */ }
                                     }
                                 },
-                                permissionViewModel = permissionViewModel,
-                                onBack = { debugStep = 2 },
-                                onForward = { 
-                                    Log.d(TAG, "Debug: Skipping to dashboard") 
-                                    debugStep = 4
-                                },
-                                canGoBack = true,
-                                canGoForward = true,
-                                currentStep = "Permissions (4/4)"
+                                permissionViewModel = permissionViewModel
                             )
                         }
                         else -> {
@@ -185,12 +196,11 @@ class MainActivity : ComponentActivity() {
                             if (event == Lifecycle.Event.ON_RESUME) {
                                 Log.d(TAG, "ON_RESUME - App returned to foreground")
                                 val hasUsageAccess = UsageStatsPermissionChecker.hasUsageAccessPermission(this@MainActivity)
-                                Log.d(TAG, "ON_RESUME - hasUsageAccess: $hasUsageAccess, current showOnboarding: $showOnboarding")
+                                val currentAuthState = if (auth.currentUser != null) "authenticated" else "not authenticated"
+                                Log.d(TAG, "ON_RESUME - hasUsageAccess: $hasUsageAccess, user: $currentAuthState")
                                 
                                 // Update permission state in ViewModel - this triggers the UI update
                                 permissionViewModel.checkPermissionStatus(this@MainActivity)
-                                
-                                showOnboarding = !hasUsageAccess
                             }
                         }
                         lifecycleOwner.lifecycle.addObserver(observer)
